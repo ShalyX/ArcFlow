@@ -19,6 +19,11 @@ const transferAbi = [
 export type VerifiedPayment = {
   payer: `0x${string}`;
   txHash: `0x${string}`;
+  tokenAddress: `0x${string}`;
+  receiver: `0x${string}`;
+  amount: string;
+  chainId: number;
+  blockNumber: string;
 };
 
 export function validateIntentAddress(address: string): address is `0x${string}` {
@@ -31,9 +36,22 @@ export async function verifyArcUsdcTransfer(intent: PaymentIntent, txHash: `0x${
     transport: http(process.env.ARC_RPC_URL || ARC_TESTNET.rpcUrl)
   });
 
+  const chainId = await client.getChainId();
+  if (chainId !== ARC_TESTNET.id) {
+    throw new Error(`Verifier is connected to chain ${chainId}, expected Arc Testnet ${ARC_TESTNET.id}.`);
+  }
+
   const receipt = await client.getTransactionReceipt({ hash: txHash });
   if (receipt.status !== "success") {
     throw new Error("Transaction did not succeed on Arc Testnet.");
+  }
+
+  const transaction = await client.getTransaction({ hash: txHash });
+  if (transaction.chainId !== undefined && transaction.chainId !== ARC_TESTNET.id) {
+    throw new Error("Transaction hash is not from Arc Testnet.");
+  }
+  if (transaction.to?.toLowerCase() !== ARC_TESTNET.usdcAddress.toLowerCase()) {
+    throw new Error("Transaction did not call the Arc ERC-20 USDC token contract.");
   }
 
   for (const log of receipt.logs) {
@@ -54,7 +72,12 @@ export async function verifyArcUsdcTransfer(intent: PaymentIntent, txHash: `0x${
       if (amountMatches && receiverMatches) {
         return {
           payer: from,
-          txHash
+          txHash,
+          tokenAddress: log.address,
+          receiver: to,
+          amount: value.toString(),
+          chainId,
+          blockNumber: receipt.blockNumber.toString()
         };
       }
     } catch {

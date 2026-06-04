@@ -26,7 +26,7 @@ import {
 import { confirmPayment, createPaymentIntent, demoSettlePayment, getDashboardState, getPaymentIntent, resetDemoData, seedDemoIntent } from "./api";
 import { ARC_TESTNET, formatUsdc } from "./shared/arc";
 import type { CreateIntentInput, DashboardState, EventLog, PaymentIntent, Receipt, TemplateKey } from "./shared/types";
-import { connectAndPayIntent } from "./walletCheckout";
+import { connectAndPayIntent, type WalletCheckoutStep } from "./walletCheckout";
 import "./styles.css";
 
 const templateOptions: Array<{ key: TemplateKey; title: string; copy: string; icon: React.ElementType }> = [
@@ -49,6 +49,23 @@ const initialState: DashboardState = {
   webhookDeliveries: [],
   logs: []
 };
+
+type CheckoutStatus =
+  | "idle"
+  | WalletCheckoutStep
+  | "verify-arcflow"
+  | "receipt-issued"
+  | "failed";
+
+const checkoutSteps: Array<{ key: CheckoutStatus; label: string }> = [
+  { key: "connect-wallet", label: "Connect wallet" },
+  { key: "switch-network", label: "Switch to Arc Testnet" },
+  { key: "check-balance", label: "Check USDC balance" },
+  { key: "submit-transfer", label: "Submit transfer" },
+  { key: "wait-confirmation", label: "Wait for confirmation" },
+  { key: "verify-arcflow", label: "Verify with ArcFlow" },
+  { key: "receipt-issued", label: "Receipt issued" }
+];
 
 function App() {
   const [state, setState] = useState<DashboardState>(initialState);
@@ -156,6 +173,23 @@ function Dashboard({
           <TrailPanel state={state} />
         </section>
 
+        <section className="split-layout">
+          <MerchantUnlockPanel />
+          <div className="panel">
+            <div className="panel-heading">
+              <Webhook size={20} />
+              <div>
+                <h2>Signed Delivery</h2>
+                <p>Demo seed enables the local merchant webhook receiver.</p>
+              </div>
+            </div>
+            <div className="demo-script">
+              <strong>Merchant endpoint</strong>
+              <span>http://127.0.0.1:9090/webhooks/arcflow</span>
+            </div>
+          </div>
+        </section>
+
         <section id="intents" className="section-band">
           <SectionTitle icon={Send} title="Payment Intents" />
           <div className="table-surface">
@@ -250,6 +284,55 @@ function Dashboard({
         </section>
       </section>
     </main>
+  );
+}
+
+type MerchantAccess = {
+  customerId: string;
+  access: null | {
+    productId: string;
+    unlockedAt: string;
+  };
+};
+
+function MerchantUnlockPanel() {
+  const [access, setAccess] = useState<MerchantAccess | null>(null);
+  const [error, setError] = useState("");
+
+  async function refresh() {
+    setError("");
+    try {
+      const response = await fetch("http://127.0.0.1:9090/access/cus_demo");
+      if (!response.ok) throw new Error("Merchant API is not reachable.");
+      setAccess((await response.json()) as MerchantAccess);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not load merchant unlock status.");
+    }
+  }
+
+  useEffect(() => {
+    refresh().catch(() => undefined);
+  }, []);
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <LockKeyhole size={20} />
+        <div>
+          <h2>Merchant Unlock</h2>
+          <p>Tracks whether the signed webhook unlocked `cus_demo`.</p>
+        </div>
+      </div>
+      <div className="unlock-status">
+        <span>cus_demo</span>
+        <strong>{access?.access ? "Unlocked" : "Waiting"}</strong>
+        {access?.access && <small>{access.access.productId} · {new Date(access.access.unlockedAt).toLocaleString()}</small>}
+        {error && <small>{error}</small>}
+      </div>
+      <button className="secondary-button" onClick={refresh}>
+        <Activity size={17} /> Refresh merchant status
+      </button>
+    </section>
   );
 }
 
@@ -459,6 +542,7 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
   const [txHash, setTxHash] = useState("");
   const [message, setMessage] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
+  const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus>("idle");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -471,10 +555,13 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
     setBusy(true);
     setMessage("");
     try {
+      setCheckoutStatus("verify-arcflow");
       await confirmPayment(intent.id, { txHash: txHash as `0x${string}` });
       setIntent(await getPaymentIntent(intent.id));
+      setCheckoutStatus("receipt-issued");
       setMessage("Payment verified and receipt issued.");
     } catch (error) {
+      setCheckoutStatus("failed");
       setMessage(error instanceof Error ? error.message : "Could not verify payment.");
     } finally {
       setBusy(false);
@@ -488,8 +575,10 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
     try {
       await demoSettlePayment(intent.id);
       setIntent(await getPaymentIntent(intent.id));
+      setCheckoutStatus("receipt-issued");
       setMessage("Demo settlement created a receipt and event log.");
     } catch (error) {
+      setCheckoutStatus("failed");
       setMessage(error instanceof Error ? error.message : "Could not settle demo payment.");
     } finally {
       setBusy(false);
@@ -499,16 +588,20 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
   async function payWithWallet() {
     if (!intent) return;
     setBusy(true);
+    setCheckoutStatus("connect-wallet");
     setMessage("Connect your wallet, approve Arc Testnet, then confirm the USDC transfer.");
     try {
-      const payment = await connectAndPayIntent(intent);
+      const payment = await connectAndPayIntent(intent, { onStep: setCheckoutStatus });
       setWalletAddress(payment.account);
       setTxHash(payment.txHash);
+      setCheckoutStatus("verify-arcflow");
       setMessage("Transfer confirmed on Arc. Issuing ArcFlow receipt...");
       await confirmPayment(intent.id, { txHash: payment.txHash });
       setIntent(await getPaymentIntent(intent.id));
+      setCheckoutStatus("receipt-issued");
       setMessage("Payment verified and receipt issued.");
     } catch (error) {
+      setCheckoutStatus("failed");
       setMessage(error instanceof Error ? error.message : "Wallet checkout failed.");
     } finally {
       setBusy(false);
@@ -533,6 +626,7 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
               <code>{intent.receiver}</code>
               <small>USDC token: {ARC_TESTNET.usdcAddress}</small>
             </div>
+            <CheckoutStepper status={intent.status === "paid" ? "receipt-issued" : checkoutStatus} />
             <button className="primary-button full-width" onClick={payWithWallet} disabled={busy || intent.status === "paid"}>
               {busy ? <Loader2 className="spin" size={18} /> : <Wallet size={18} />}
               Connect wallet and pay USDC
@@ -542,6 +636,11 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
                 <Wallet size={16} />
                 <span>{walletAddress}</span>
               </div>
+            )}
+            {txHash && (
+              <a className="secondary-button full-width" href={`${ARC_TESTNET.explorerUrl}/tx/${txHash}`} target="_blank" rel="noreferrer">
+                <ExternalLink size={17} /> View transaction
+              </a>
             )}
             <form onSubmit={submitConfirmation}>
               <label>
@@ -557,6 +656,11 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
               <TerminalSquare size={17} /> Demo settle
             </button>
             {intent.status === "paid" && <div className="success">Paid · receipt {intent.receiptId}</div>}
+            {intent.status === "paid" && intent.receiptId && (
+              <a className="secondary-button full-width" href={`/receipts/${intent.receiptId}`}>
+                <ReceiptText size={17} /> Open receipt
+              </a>
+            )}
             {message && <div className="notice">{message}</div>}
           </>
         ) : (
@@ -564,6 +668,26 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
         )}
       </section>
     </main>
+  );
+}
+
+function CheckoutStepper({ status }: { status: CheckoutStatus }) {
+  const activeIndex = checkoutSteps.findIndex((step) => step.key === status);
+  const failed = status === "failed";
+
+  return (
+    <ol className="checkout-steps">
+      {checkoutSteps.map((step, index) => {
+        const complete = activeIndex >= 0 && index < activeIndex;
+        const active = step.key === status;
+        return (
+          <li className={complete ? "complete" : active ? "active" : failed && index === activeIndex ? "failed" : ""} key={step.key}>
+            <span>{complete ? <CheckCircle2 size={15} /> : index + 1}</span>
+            <strong>{step.label}</strong>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

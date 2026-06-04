@@ -11,6 +11,8 @@ import {
   createPaymentIntent,
   createReceipt,
   getPaymentIntent,
+  getIntentByTxHash,
+  getReceiptByTxHash,
   getState,
   initStore,
   markIntentPaid,
@@ -77,6 +79,10 @@ app.post("/api/payment-intents/:id/confirm", async (request, response) => {
   const body = request.body as ConfirmPaymentInput;
   if (!body.txHash?.startsWith("0x")) {
     response.status(400).json({ error: "A transaction hash is required." });
+    return;
+  }
+  if (getReceiptByTxHash(body.txHash) || getIntentByTxHash(body.txHash)) {
+    response.status(409).json({ error: "Transaction hash has already been used for an ArcFlow payment." });
     return;
   }
 

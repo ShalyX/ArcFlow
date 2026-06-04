@@ -1,4 +1,5 @@
 import "dotenv/config";
+import cors from "cors";
 import express from "express";
 import { verifyArcFlowWebhook } from "../../packages/sdk/src/webhooks";
 
@@ -6,6 +7,8 @@ const app = express();
 const port = Number(process.env.MERCHANT_PORT || 9090);
 const webhookSecret = process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret";
 const unlockedCustomers = new Map<string, { productId: string; unlockedAt: string }>();
+
+app.use(cors());
 
 app.get("/health", (_request, response) => {
   response.json({ ok: true, service: "ArcFlow merchant example" });

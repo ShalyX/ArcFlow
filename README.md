@@ -164,6 +164,22 @@ POST /api/demo/seed
 POST /api/demo/reset
 ```
 
+## Payment Verification
+
+ArcFlow only marks an intent paid after the verifier confirms:
+
+- RPC is connected to Arc Testnet.
+- Transaction belongs to Arc Testnet when chain metadata is present.
+- Transaction succeeded.
+- Transaction called the Arc ERC-20 USDC token contract.
+- Receipt contains a canonical USDC `Transfer` event.
+- Transfer receiver exactly matches the payment intent receiver.
+- Transfer amount exactly matches the payment intent amount.
+- Transaction hash has not already been used by another payment intent or receipt.
+- Payment intent is still pending.
+
+The amount match is exact, so underpaid transfers do not settle an intent.
+
 ## API Sketch
 
 Create a payment intent:

@@ -449,6 +449,24 @@ tr:last-child td {
   font-size: 15px;
 }
 
+.unlock-status {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+  background: #fffefa;
+}
+
+.unlock-status span,
+.unlock-status small {
+  color: var(--muted);
+}
+
+.unlock-status strong {
+  font-size: 22px;
+}
+
 .receipt-card span {
   color: var(--muted);
   overflow-wrap: anywhere;
@@ -622,6 +640,58 @@ tr:last-child td {
   white-space: nowrap;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 13px;
+}
+
+.checkout-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.checkout-steps li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #fffefa;
+  color: var(--muted);
+}
+
+.checkout-steps li span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #ece6d9;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.checkout-steps li strong {
+  font-size: 13px;
+}
+
+.checkout-steps li.active {
+  border-color: rgba(10, 107, 120, 0.38);
+  background: rgba(10, 107, 120, 0.08);
+  color: var(--teal);
+}
+
+.checkout-steps li.complete {
+  border-color: rgba(15, 122, 79, 0.28);
+  color: var(--green);
+}
+
+.checkout-steps li.complete span,
+.checkout-steps li.active span {
+  background: currentColor;
+  color: #fffefa;
 }
 
 code {

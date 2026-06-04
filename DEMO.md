@@ -23,6 +23,33 @@ ArcFlow gives USDC apps on Arc a payment event layer: create intents, settle pay
 9. Restart the API and refresh the console to show the payment trail persisted.
 10. Show the SDK snippets in the README to make the developer integration path clear.
 
+## Real Wallet Flow
+
+Use this for the serious ArcFlow demo:
+
+1. Start ArcFlow API, ArcFlow console, and the merchant example API.
+2. Seed demo merchant from the dashboard with **Seed and open checkout**.
+3. Confirm the local merchant webhook endpoint is enabled:
+   `http://127.0.0.1:9090/webhooks/arcflow`
+4. Connect a funded wallet in checkout.
+5. Wallet switches to Arc Testnet.
+6. Customer pays ERC-20 USDC.
+7. ArcFlow verifies:
+   - correct chain
+   - correct USDC token address
+   - successful transaction
+   - exact `Transfer` event
+   - exact receiver
+   - exact amount
+   - unused transaction hash
+   - pending intent
+8. ArcFlow issues a receipt.
+9. ArcFlow sends a signed webhook.
+10. Merchant API unlocks `cus_demo`.
+11. Dashboard shows the full durable payment trail.
+12. Restart the API.
+13. Refresh the dashboard and show the trail still exists.
+
 ## Talk Track
 
 The important question ArcFlow answers is:

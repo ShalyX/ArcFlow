@@ -21,12 +21,24 @@ export type WalletPaymentResult = {
   txHash: Hash;
 };
 
-export async function connectAndPayIntent(intent: PaymentIntent): Promise<WalletPaymentResult> {
+export type WalletCheckoutStep =
+  | "connect-wallet"
+  | "switch-network"
+  | "check-balance"
+  | "submit-transfer"
+  | "wait-confirmation";
+
+export type WalletPaymentOptions = {
+  onStep?: (step: WalletCheckoutStep) => void;
+};
+
+export async function connectAndPayIntent(intent: PaymentIntent, options: WalletPaymentOptions = {}): Promise<WalletPaymentResult> {
   const provider = window.ethereum;
   if (!provider) {
     throw new Error("No injected wallet was found. Install a wallet like MetaMask or Rabby and try again.");
   }
 
+  options.onStep?.("switch-network");
   await ensureArcTestnet(provider);
 
   const walletClient = createWalletClient({
@@ -34,11 +46,13 @@ export async function connectAndPayIntent(intent: PaymentIntent): Promise<Wallet
     transport: custom(provider)
   });
 
+  options.onStep?.("connect-wallet");
   const [account] = await walletClient.requestAddresses();
   if (!account) {
     throw new Error("Wallet connection was not approved.");
   }
 
+  options.onStep?.("check-balance");
   const amount = BigInt(intent.amount);
   const balance = await publicClient.readContract({
     address: ARC_TESTNET.usdcAddress,
@@ -51,6 +65,7 @@ export async function connectAndPayIntent(intent: PaymentIntent): Promise<Wallet
     throw new Error("Connected wallet does not have enough Arc Testnet USDC for this payment.");
   }
 
+  options.onStep?.("submit-transfer");
   const txHash = await walletClient.writeContract({
     account,
     address: ARC_TESTNET.usdcAddress,
@@ -59,6 +74,7 @@ export async function connectAndPayIntent(intent: PaymentIntent): Promise<Wallet
     args: [intent.receiver, amount]
   });
 
+  options.onStep?.("wait-confirmation");
   await publicClient.waitForTransactionReceipt({
     hash: txHash,
     timeout: 120_000

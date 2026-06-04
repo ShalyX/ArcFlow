@@ -52,6 +52,9 @@ function migrate() {
       issued_at TEXT NOT NULL
     );
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_receipts_tx_hash ON receipts (tx_hash);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_intents_tx_hash ON payment_intents (tx_hash) WHERE tx_hash IS NOT NULL;
+
     CREATE TABLE IF NOT EXISTS webhooks (
       id TEXT PRIMARY KEY,
       url TEXT NOT NULL,
@@ -250,6 +253,14 @@ export function getPaymentIntent(paymentIntentId: string) {
   return getOne("SELECT * FROM payment_intents WHERE id = ?", [paymentIntentId], mapIntent);
 }
 
+export function getIntentByTxHash(txHash: `0x${string}`) {
+  return getOne("SELECT * FROM payment_intents WHERE lower(tx_hash) = lower(?)", [txHash], mapIntent);
+}
+
+export function getReceiptByTxHash(txHash: `0x${string}`) {
+  return getOne("SELECT * FROM receipts WHERE lower(tx_hash) = lower(?)", [txHash], mapReceipt);
+}
+
 export function markIntentPaid(paymentIntentId: string, txHash: `0x${string}`, receiptId: string) {
   db.run("UPDATE payment_intents SET status = ?, tx_hash = ?, receipt_id = ?, updated_at = ? WHERE id = ?", [
     "paid",
@@ -380,6 +391,7 @@ export function resetDemoData() {
 }
 
 export function seedDemoIntent() {
+  ensureDemoMerchantWebhook();
   return createPaymentIntent({
     amount: "10000000",
     receiver: "0x0000000000000000000000000000000000000001",
@@ -390,5 +402,24 @@ export function seedDemoIntent() {
       productId: "api_basic",
       flow: "access-unlock"
     }
+  });
+}
+
+export function ensureDemoMerchantWebhook() {
+  const existing = getOne("SELECT * FROM webhooks WHERE url = ?", ["http://127.0.0.1:9090/webhooks/arcflow"], mapWebhook);
+  if (existing) {
+    db.run("UPDATE webhooks SET enabled = ?, events = ? WHERE id = ?", [
+      1,
+      JSON.stringify(["payment_intent.paid", "receipt.issued"]),
+      existing.id
+    ]);
+    persist();
+    return { ...existing, enabled: true, events: ["payment_intent.paid", "receipt.issued"] };
+  }
+
+  return addWebhook({
+    url: "http://127.0.0.1:9090/webhooks/arcflow",
+    events: ["payment_intent.paid", "receipt.issued"],
+    enabled: true
   });
 }
