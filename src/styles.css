@@ -150,6 +150,12 @@ td small {
   gap: 14px;
 }
 
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .metric,
 .template-card,
 .receipt-card,
@@ -432,6 +438,34 @@ tr:last-child td {
   padding: 13px;
 }
 
+.config-item {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 13px;
+  display: grid;
+  grid-template-columns: minmax(90px, 0.35fr) minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 10px;
+}
+
+.config-item span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.config-item code {
+  font-size: 13px;
+}
+
+.compact {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+}
+
 .line-card div {
   min-width: 0;
 }
@@ -586,7 +620,7 @@ code {
   }
 
   .nav-list {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .nav-list a {
@@ -598,7 +632,8 @@ code {
   .metrics,
   .template-grid,
   .receipt-grid,
-  .roadmap-strip {
+  .roadmap-strip,
+  .config-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -623,12 +658,21 @@ code {
   .template-grid,
   .receipt-grid,
   .roadmap-strip,
+  .config-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }
 
   .log-item {
     grid-template-columns: 1fr;
+  }
+
+  .config-item {
+    grid-template-columns: 1fr 34px;
+  }
+
+  .config-item span {
+    grid-column: 1 / -1;
   }
 
   .receipt-document dl div {

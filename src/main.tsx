@@ -113,8 +113,9 @@ function Dashboard({
         <nav className="nav-list" aria-label="Primary">
           <a href="#intents"><Send size={18} /> Intents</a>
           <a href="#receipts"><ReceiptText size={18} /> Receipts</a>
-          <a href="#webhooks"><Webhook size={18} /> Webhooks</a>
+          <a href="#webhooks"><Webhook size={18} /> Events</a>
           <a href="#logs"><TerminalSquare size={18} /> Logs</a>
+          <a href="#config"><Code2 size={18} /> Config</a>
           <a href="#templates"><Boxes size={18} /> Templates</a>
         </nav>
         <div className="network-panel">
@@ -127,7 +128,7 @@ function Dashboard({
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p>Payment intents, receipts, webhooks, and logs for USDC apps on Arc.</p>
+            <p>What happened after money moved?</p>
             <h1>ArcFlow Console</h1>
           </div>
           <button className="icon-button" onClick={onRefresh} aria-label="Refresh dashboard" title="Refresh dashboard">
@@ -189,7 +190,7 @@ function Dashboard({
         </section>
 
         <section id="webhooks" className="section-band">
-          <SectionTitle icon={Webhook} title="Webhooks" />
+          <SectionTitle icon={Webhook} title="Webhook Events" />
           <div className="webhook-list">
             {state.webhooks.map((webhook) => (
               <article className="line-card" key={webhook.id}>
@@ -201,6 +202,11 @@ function Dashboard({
               </article>
             ))}
           </div>
+        </section>
+
+        <section id="config" className="section-band">
+          <SectionTitle icon={Code2} title="Developer Config" />
+          <DeveloperConfig />
         </section>
 
         <section id="templates" className="section-band">
@@ -231,6 +237,31 @@ function Dashboard({
         </section>
       </section>
     </main>
+  );
+}
+
+function DeveloperConfig() {
+  const config = [
+    { label: "API base", value: "http://127.0.0.1:8787/api" },
+    { label: "SDK package", value: "@arcflow/sdk" },
+    { label: "React package", value: "@arcflow/react" },
+    { label: "Webhook header", value: "x-arcflow-signature" },
+    { label: "Arc RPC", value: ARC_TESTNET.rpcUrl },
+    { label: "USDC token", value: ARC_TESTNET.usdcAddress }
+  ];
+
+  return (
+    <div className="config-grid">
+      {config.map((item) => (
+        <article className="config-item" key={item.label}>
+          <span>{item.label}</span>
+          <code>{item.value}</code>
+          <button className="icon-button compact" onClick={() => navigator.clipboard.writeText(item.value)} aria-label={`Copy ${item.label}`} title={`Copy ${item.label}`}>
+            <Copy size={16} />
+          </button>
+        </article>
+      ))}
+    </div>
   );
 }
 

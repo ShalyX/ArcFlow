@@ -11,6 +11,10 @@ This first build focuses on the core product:
 - Event logs
 - Starter templates
 
+The product question is simple:
+
+> What happened after money moved?
+
 Later modules can extend the same surface with splits, subscriptions, agent spend controls, and credibility scoring.
 
 ## Product Structure
@@ -37,6 +41,10 @@ Open:
 ```txt
 http://127.0.0.1:5173
 ```
+
+## Demo
+
+See [DEMO.md](./DEMO.md) for the two-minute demo script.
 
 The API runs on:
 
