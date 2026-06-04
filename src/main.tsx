@@ -22,7 +22,7 @@ import {
   TerminalSquare,
   Webhook
 } from "lucide-react";
-import { confirmPayment, createPaymentIntent, demoSettlePayment, getDashboardState, getPaymentIntent } from "./api";
+import { confirmPayment, createPaymentIntent, demoSettlePayment, getDashboardState, getPaymentIntent, resetDemoData, seedDemoIntent } from "./api";
 import { ARC_TESTNET, formatUsdc } from "./shared/arc";
 import type { CreateIntentInput, DashboardState, EventLog, PaymentIntent, Receipt, TemplateKey } from "./shared/types";
 import "./styles.css";
@@ -44,6 +44,7 @@ const initialState: DashboardState = {
   paymentIntents: [],
   receipts: [],
   webhooks: [],
+  webhookDeliveries: [],
   logs: []
 };
 
@@ -145,7 +146,12 @@ function Dashboard({
 
         <section className="split-layout">
           <IntentCreator onCreated={onRefresh} />
+          <DemoPanel onRefresh={onRefresh} />
+        </section>
+
+        <section className="split-layout">
           <SdkPanel />
+          <TrailPanel state={state} />
         </section>
 
         <section id="intents" className="section-band">
@@ -191,6 +197,11 @@ function Dashboard({
 
         <section id="webhooks" className="section-band">
           <SectionTitle icon={Webhook} title="Webhook Events" />
+          <WebhookDeliveries deliveries={state.webhookDeliveries} />
+        </section>
+
+        <section className="section-band">
+          <SectionTitle icon={Webhook} title="Webhook Endpoints" />
           <div className="webhook-list">
             {state.webhooks.map((webhook) => (
               <article className="line-card" key={webhook.id}>
@@ -237,6 +248,80 @@ function Dashboard({
         </section>
       </section>
     </main>
+  );
+}
+
+function DemoPanel({ onRefresh }: { onRefresh: () => Promise<void> }) {
+  const [busy, setBusy] = useState("");
+
+  async function run(action: "seed" | "reset") {
+    setBusy(action);
+    try {
+      if (action === "seed") await seedDemoIntent();
+      if (action === "reset") await resetDemoData();
+      await onRefresh();
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <TerminalSquare size={20} />
+        <div>
+          <h2>Demo Controls</h2>
+          <p>Seed or reset the trail for a clean walkthrough.</p>
+        </div>
+      </div>
+      <div className="demo-actions">
+        <button className="primary-button" onClick={() => run("seed")} disabled={Boolean(busy)}>
+          {busy === "seed" ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
+          Seed demo intent
+        </button>
+        <button className="secondary-button" onClick={() => run("reset")} disabled={Boolean(busy)}>
+          {busy === "reset" ? <Loader2 className="spin" size={18} /> : <TerminalSquare size={18} />}
+          Reset demo data
+        </button>
+      </div>
+      <div className="demo-script">
+        <strong>Demo spine</strong>
+        <span>{"Create intent -> settle payment -> issue receipt -> record webhook/log events."}</span>
+      </div>
+    </section>
+  );
+}
+
+function TrailPanel({ state }: { state: DashboardState }) {
+  const latestIntent = state.paymentIntents[0];
+  const latestReceipt = state.receipts[0];
+  const latestDelivery = state.webhookDeliveries[0];
+  const latestLog = state.logs[0];
+  const steps = [
+    { label: "Intent", value: latestIntent ? latestIntent.status : "waiting" },
+    { label: "Receipt", value: latestReceipt ? "issued" : "waiting" },
+    { label: "Webhook", value: latestDelivery ? latestDelivery.status : "waiting" },
+    { label: "Log", value: latestLog ? latestLog.type : "waiting" }
+  ];
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <Activity size={20} />
+        <div>
+          <h2>Payment Trail</h2>
+          <p>The shortest answer to what happened after money moved.</p>
+        </div>
+      </div>
+      <div className="trail-steps">
+        {steps.map((step) => (
+          <div key={step.label}>
+            <span>{step.label}</span>
+            <strong>{step.value}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -519,6 +604,40 @@ function ReceiptGrid({ receipts, onNavigate }: { receipts: Receipt[]; onNavigate
           </button>
         </article>
       ))}
+    </div>
+  );
+}
+
+function WebhookDeliveries({ deliveries }: { deliveries: DashboardState["webhookDeliveries"] }) {
+  if (deliveries.length === 0) return <div className="empty-state">Webhook delivery attempts will appear after settlement.</div>;
+
+  return (
+    <div className="table-surface">
+      <table>
+        <thead>
+          <tr>
+            <th>Event</th>
+            <th>Status</th>
+            <th>Endpoint</th>
+            <th>HTTP</th>
+            <th>Attempt</th>
+          </tr>
+        </thead>
+        <tbody>
+          {deliveries.map((delivery) => (
+            <tr key={delivery.id}>
+              <td>
+                <strong>{delivery.eventType}</strong>
+                <small>{new Date(delivery.createdAt).toLocaleString()}</small>
+              </td>
+              <td><Status value={delivery.status} /></td>
+              <td>{delivery.endpointUrl || "No matching enabled endpoint"}</td>
+              <td>{delivery.httpStatus || "-"}</td>
+              <td>{delivery.attempt}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

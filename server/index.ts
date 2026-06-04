@@ -5,7 +5,18 @@ import express from "express";
 import { parseUsdc } from "../src/shared/arc";
 import type { ConfirmPaymentInput, CreateIntentInput } from "../src/shared/types";
 import { validateIntentAddress, verifyArcUsdcTransfer } from "./arcVerifier";
-import { addLog, addWebhook, createPaymentIntent, createReceipt, getPaymentIntent, getState, markIntentPaid } from "./store";
+import {
+  addLog,
+  addWebhook,
+  createPaymentIntent,
+  createReceipt,
+  getPaymentIntent,
+  getState,
+  initStore,
+  markIntentPaid,
+  resetDemoData,
+  seedDemoIntent
+} from "./store";
 import { deliverWebhooks } from "./webhooks";
 
 const app = express();
@@ -149,6 +160,18 @@ app.post("/api/webhooks", (request, response) => {
   response.status(201).json(webhook);
 });
 
-app.listen(port, "127.0.0.1", () => {
-  console.log(`ArcFlow API listening on http://127.0.0.1:${port}`);
+app.post("/api/demo/seed", (request, response) => {
+  const intent = seedDemoIntent();
+  response.status(201).json(intent);
+});
+
+app.post("/api/demo/reset", (request, response) => {
+  resetDemoData();
+  response.json(getState());
+});
+
+initStore().then(() => {
+  app.listen(port, "127.0.0.1", () => {
+    console.log(`ArcFlow API listening on http://127.0.0.1:${port}`);
+  });
 });

@@ -43,3 +43,15 @@ export function demoSettlePayment(id: string) {
     method: "POST"
   });
 }
+
+export function seedDemoIntent() {
+  return request("/demo/seed", {
+    method: "POST"
+  });
+}
+
+export function resetDemoData() {
+  return request<DashboardState>("/demo/reset", {
+    method: "POST"
+  });
+}

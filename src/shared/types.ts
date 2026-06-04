@@ -37,6 +37,18 @@ export type WebhookEndpoint = {
   createdAt: string;
 };
 
+export type WebhookDelivery = {
+  id: string;
+  webhookId?: string;
+  eventType: string;
+  endpointUrl?: string;
+  status: "skipped" | "delivered" | "failed";
+  httpStatus?: number;
+  attempt: number;
+  error?: string;
+  createdAt: string;
+};
+
 export type EventLog = {
   id: string;
   level: LogLevel;
@@ -53,6 +65,7 @@ export type DashboardState = {
   paymentIntents: PaymentIntent[];
   receipts: Receipt[];
   webhooks: WebhookEndpoint[];
+  webhookDeliveries: WebhookDelivery[];
   logs: EventLog[];
 };
 

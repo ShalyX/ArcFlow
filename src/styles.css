@@ -372,9 +372,24 @@ tr:last-child td {
   color: var(--green);
 }
 
+.status-delivered {
+  background: rgba(15, 122, 79, 0.13);
+  color: var(--green);
+}
+
 .status-pending {
   background: rgba(168, 121, 22, 0.14);
   color: var(--gold);
+}
+
+.status-skipped {
+  background: rgba(104, 113, 107, 0.14);
+  color: var(--muted);
+}
+
+.status-failed {
+  background: rgba(185, 63, 53, 0.1);
+  color: var(--red);
 }
 
 .empty-cell,
@@ -392,6 +407,46 @@ tr:last-child td {
   padding: 15px;
   display: grid;
   gap: 9px;
+}
+
+.demo-actions,
+.trail-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.demo-script {
+  border: 1px dashed #c7c0b1;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.demo-script span {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.trail-steps div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+  background: #fffefa;
+}
+
+.trail-steps span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.trail-steps strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
 }
 
 .receipt-card span {
@@ -633,7 +688,9 @@ code {
   .template-grid,
   .receipt-grid,
   .roadmap-strip,
-  .config-grid {
+  .config-grid,
+  .demo-actions,
+  .trail-steps {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -659,6 +716,8 @@ code {
   .receipt-grid,
   .roadmap-strip,
   .config-grid,
+  .demo-actions,
+  .trail-steps,
   .form-grid {
     grid-template-columns: 1fr;
   }

@@ -9,16 +9,17 @@ ArcFlow gives USDC apps on Arc a payment event layer: create intents, settle pay
 ## Demo Flow
 
 1. Open the ArcFlow console.
-2. In **Create Intent**, use the `Access unlock` template.
-3. Create a payment intent for `10.00` USDC.
+2. Use **Seed demo intent**, or create an intent manually with the `Access unlock` template.
+3. Confirm the intent appears in **Payment Intents**.
 4. Open the hosted checkout link from **Payment Intents**.
 5. Use **Demo settle** for a local demo, or paste a real Arc Testnet USDC transfer transaction hash.
 6. Return to the console.
 7. Show:
    - The intent is now `paid`.
    - A receipt was issued.
-   - A webhook event was recorded.
+   - A webhook delivery attempt was recorded.
    - The flow logs explain each step.
+8. Restart the API and refresh the console to show the payment trail persisted.
 
 ## Talk Track
 
@@ -50,3 +51,4 @@ After the demo, the dashboard should show:
 - At least one receipt.
 - A webhook skipped or delivered event.
 - Flow logs for creation, receipt issuance, settlement, and webhook handling.
+- The same trail after restart because it is stored in SQLite.

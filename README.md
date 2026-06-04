@@ -10,6 +10,8 @@ This first build focuses on the core product:
 - Webhook delivery
 - Event logs
 - Starter templates
+- SQLite persistence
+- Demo seed/reset controls
 
 The product question is simple:
 
@@ -54,6 +56,14 @@ http://127.0.0.1:8787
 
 Copy `.env.example` to `.env` if you want to override the Arc RPC URL or webhook signing secret.
 
+Runtime data is stored in:
+
+```txt
+data/arcflow.sqlite
+```
+
+The `data/` directory is ignored by git.
+
 ## Arc Defaults
 
 - Network: Arc Testnet
@@ -73,6 +83,13 @@ Arc native gas uses 18 decimals, but ArcFlow payment amounts use ERC-20 USDC and
 5. ArcFlow issues a receipt, sends matching webhooks, and records logs.
 
 For local demos, the checkout page includes a demo settlement button that creates the receipt/log flow without submitting an onchain transaction.
+
+You can also seed and reset demo data from the console, or through:
+
+```http
+POST /api/demo/seed
+POST /api/demo/reset
+```
 
 ## API Sketch
 
