@@ -274,6 +274,13 @@ select:focus {
   white-space: nowrap;
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .icon-button {
   width: 42px;
   height: 42px;
@@ -728,6 +735,23 @@ code {
   margin: 0;
 }
 
+.receipt-hero {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.receipt-hero h1,
+.receipt-hero p {
+  margin: 0;
+}
+
+.receipt-hero p {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
 .receipt-document dl div {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr);
@@ -743,6 +767,12 @@ code {
 .receipt-document dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.receipt-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .spin {
@@ -826,6 +856,11 @@ code {
   }
 
   .receipt-document dl div {
+    grid-template-columns: 1fr;
+  }
+
+  .receipt-hero,
+  .receipt-actions {
     grid-template-columns: 1fr;
   }
 }

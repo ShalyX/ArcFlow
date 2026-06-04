@@ -67,6 +67,10 @@ const checkoutSteps: Array<{ key: CheckoutStatus; label: string }> = [
   { key: "receipt-issued", label: "Receipt issued" }
 ];
 
+function absoluteUrl(path: string) {
+  return new URL(path, window.location.origin).toString();
+}
+
 function App() {
   const [state, setState] = useState<DashboardState>(initialState);
   const [loading, setLoading] = useState(true);
@@ -214,13 +218,18 @@ function Dashboard({
                     <td><Status value={intent.status} /></td>
                     <td>{intent.template}</td>
                     <td>
-                      <button className="tiny-button" onClick={() => onNavigate(intent.checkoutUrl)}>
+                      <div className="row-actions">
+                        <button className="tiny-button" onClick={() => onNavigate(intent.checkoutUrl)}>
                         <ExternalLink size={15} /> Open checkout
-                      </button>
+                        </button>
+                        <button className="tiny-button" onClick={() => navigator.clipboard.writeText(absoluteUrl(intent.checkoutUrl))}>
+                          <Copy size={15} /> Copy link
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
-                {state.paymentIntents.length === 0 && <EmptyRow colSpan={5} text="Create the first intent to start the ledger." />}
+                {state.paymentIntents.length === 0 && <EmptyRow colSpan={5} text="Payment intents are checkout sessions. Create one to start a payment trail." />}
               </tbody>
             </table>
           </div>
@@ -248,6 +257,9 @@ function Dashboard({
                 </div>
               </article>
             ))}
+            {state.webhooks.length === 0 && (
+              <div className="empty-state">Webhook endpoints are where ArcFlow sends signed payment events after verification.</div>
+            )}
           </div>
         </section>
 
@@ -626,6 +638,9 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
               <code>{intent.receiver}</code>
               <small>USDC token: {ARC_TESTNET.usdcAddress}</small>
             </div>
+            <button className="secondary-button full-width" onClick={() => navigator.clipboard.writeText(window.location.href)}>
+              <Copy size={17} /> Copy checkout link
+            </button>
             <CheckoutStepper status={intent.status === "paid" ? "receipt-issued" : checkoutStatus} />
             <button className="primary-button full-width" onClick={payWithWallet} disabled={busy || intent.status === "paid"}>
               {busy ? <Loader2 className="spin" size={18} /> : <Wallet size={18} />}
@@ -693,6 +708,7 @@ function CheckoutStepper({ status }: { status: CheckoutStatus }) {
 
 function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: DashboardState; onBack: () => void }) {
   const receipt = state.receipts.find((item) => item.id === receiptId);
+  const intent = receipt ? state.paymentIntents.find((item) => item.id === receipt.paymentIntentId) : undefined;
 
   return (
     <main className="checkout-shell">
@@ -700,19 +716,36 @@ function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: D
         <button className="text-button" onClick={onBack}>Back to console</button>
         {receipt ? (
           <>
-            <ReceiptText size={34} />
-            <h1>Payment Receipt</h1>
+            <div className="receipt-hero">
+              <ReceiptText size={34} />
+              <div>
+                <h1>Payment Receipt</h1>
+                <p>Proof of a verified Arc USDC payment event.</p>
+              </div>
+              <Status value={receipt.status} />
+            </div>
             <dl>
               <div><dt>Receipt</dt><dd>{receipt.id}</dd></div>
+              <div><dt>Intent</dt><dd>{receipt.paymentIntentId}</dd></div>
+              {intent && <div><dt>Description</dt><dd>{intent.description}</dd></div>}
               <div><dt>Amount</dt><dd>{formatUsdc(receipt.amount)} USDC</dd></div>
               <div><dt>Status</dt><dd>{receipt.status}</dd></div>
               <div><dt>Receiver</dt><dd>{receipt.receiver}</dd></div>
               <div><dt>Payer</dt><dd>{receipt.payer || "Unknown"}</dd></div>
+              <div><dt>Tx hash</dt><dd>{receipt.txHash}</dd></div>
               <div><dt>Issued</dt><dd>{new Date(receipt.issuedAt).toLocaleString()}</dd></div>
             </dl>
-            <a className="secondary-button" href={`${ARC_TESTNET.explorerUrl}/tx/${receipt.txHash}`} target="_blank" rel="noreferrer">
-              <ExternalLink size={17} /> View transaction
-            </a>
+            <div className="receipt-actions">
+              <button className="secondary-button" onClick={() => navigator.clipboard.writeText(absoluteUrl(receipt.receiptUrl))}>
+                <Copy size={17} /> Copy receipt link
+              </button>
+              <button className="secondary-button" onClick={() => navigator.clipboard.writeText(receipt.txHash)}>
+                <Copy size={17} /> Copy tx hash
+              </button>
+              <a className="secondary-button" href={`${ARC_TESTNET.explorerUrl}/tx/${receipt.txHash}`} target="_blank" rel="noreferrer">
+                <ExternalLink size={17} /> View transaction
+              </a>
+            </div>
           </>
         ) : (
           <div className="notice">Receipt not found yet. Return to the console after settlement.</div>
@@ -755,7 +788,7 @@ function EmptyRow({ colSpan, text }: { colSpan: number; text: string }) {
 
 function ReceiptGrid({ receipts, onNavigate }: { receipts: Receipt[]; onNavigate: (path: string) => void }) {
   if (receipts.length === 0) {
-    return <div className="empty-state">Receipts will appear after verified or demo-settled payments.</div>;
+    return <div className="empty-state">Receipts are issued only after ArcFlow verifies an exact USDC transfer for an intent.</div>;
   }
 
   return (
@@ -775,7 +808,7 @@ function ReceiptGrid({ receipts, onNavigate }: { receipts: Receipt[]; onNavigate
 }
 
 function WebhookDeliveries({ deliveries }: { deliveries: DashboardState["webhookDeliveries"] }) {
-  if (deliveries.length === 0) return <div className="empty-state">Webhook delivery attempts will appear after settlement.</div>;
+  if (deliveries.length === 0) return <div className="empty-state">Webhook events show what ArcFlow told your app after payment verification.</div>;
 
   return (
     <div className="table-surface">
@@ -809,7 +842,7 @@ function WebhookDeliveries({ deliveries }: { deliveries: DashboardState["webhook
 }
 
 function LogList({ logs }: { logs: EventLog[] }) {
-  if (logs.length === 0) return <div className="empty-state">No events yet.</div>;
+  if (logs.length === 0) return <div className="empty-state">Flow logs explain each step after money moves: intent creation, receipt issuance, webhook delivery, and verification errors.</div>;
   return (
     <div className="log-list">
       {logs.map((log) => (
