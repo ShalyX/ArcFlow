@@ -45,7 +45,7 @@ export function demoSettlePayment(id: string) {
 }
 
 export function seedDemoIntent() {
-  return request("/demo/seed", {
+  return request<PaymentIntent>("/demo/seed", {
     method: "POST"
   });
 }

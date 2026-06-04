@@ -148,7 +148,7 @@ function Dashboard({
 
         <section className="split-layout">
           <IntentCreator onCreated={onRefresh} />
-          <DemoPanel onRefresh={onRefresh} />
+          <DemoPanel onRefresh={onRefresh} onNavigate={onNavigate} />
         </section>
 
         <section className="split-layout">
@@ -181,7 +181,7 @@ function Dashboard({
                     <td>{intent.template}</td>
                     <td>
                       <button className="tiny-button" onClick={() => onNavigate(intent.checkoutUrl)}>
-                        <ExternalLink size={15} /> Open
+                        <ExternalLink size={15} /> Open checkout
                       </button>
                     </td>
                   </tr>
@@ -253,13 +253,19 @@ function Dashboard({
   );
 }
 
-function DemoPanel({ onRefresh }: { onRefresh: () => Promise<void> }) {
+function DemoPanel({ onRefresh, onNavigate }: { onRefresh: () => Promise<void>; onNavigate: (path: string) => void }) {
   const [busy, setBusy] = useState("");
 
-  async function run(action: "seed" | "reset") {
+  async function run(action: "seed" | "seed-open" | "reset") {
     setBusy(action);
     try {
       if (action === "seed") await seedDemoIntent();
+      if (action === "seed-open") {
+        const intent = await seedDemoIntent();
+        await onRefresh();
+        onNavigate(intent.checkoutUrl);
+        return;
+      }
       if (action === "reset") await resetDemoData();
       await onRefresh();
     } finally {
@@ -277,9 +283,13 @@ function DemoPanel({ onRefresh }: { onRefresh: () => Promise<void> }) {
         </div>
       </div>
       <div className="demo-actions">
-        <button className="primary-button" onClick={() => run("seed")} disabled={Boolean(busy)}>
+        <button className="primary-button" onClick={() => run("seed-open")} disabled={Boolean(busy)}>
+          {busy === "seed-open" ? <Loader2 className="spin" size={18} /> : <ExternalLink size={18} />}
+          Seed and open checkout
+        </button>
+        <button className="secondary-button" onClick={() => run("seed")} disabled={Boolean(busy)}>
           {busy === "seed" ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
-          Seed demo intent
+          Seed only
         </button>
         <button className="secondary-button" onClick={() => run("reset")} disabled={Boolean(busy)}>
           {busy === "reset" ? <Loader2 className="spin" size={18} /> : <TerminalSquare size={18} />}
@@ -525,7 +535,7 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
             </div>
             <button className="primary-button full-width" onClick={payWithWallet} disabled={busy || intent.status === "paid"}>
               {busy ? <Loader2 className="spin" size={18} /> : <Wallet size={18} />}
-              Connect wallet and pay
+              Connect wallet and pay USDC
             </button>
             {walletAddress && (
               <div className="wallet-chip">
