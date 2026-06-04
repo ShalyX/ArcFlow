@@ -21,6 +21,17 @@ app.get("/access/:customerId", (request, response) => {
   });
 });
 
+app.get("/webhooks/arcflow", (_request, response) => {
+  response.json({
+    ok: true,
+    endpoint: "/webhooks/arcflow",
+    method: "POST",
+    message: "ArcFlow webhook receiver is active. Send signed payment events here with POST.",
+    signatureHeader: "x-arcflow-signature",
+    supportedEvents: ["payment_intent.paid"]
+  });
+});
+
 app.post("/webhooks/arcflow", express.raw({ type: "application/json" }), (request, response) => {
   try {
     const event = verifyArcFlowWebhook({
