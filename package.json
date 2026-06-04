@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
     "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1",
-    "api": "tsx watch server/index.ts"
+    "api": "tsx watch server/index.ts",
+    "example:merchant": "tsx examples/merchant-api/index.ts"
   },
   "dependencies": {
     "@types/sql.js": "^1.4.11",

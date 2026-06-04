@@ -1,0 +1,10 @@
+{
+  "name": "@arcflow/react",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.tsx",
+  "peerDependencies": {
+    "@arcflow/sdk": "0.1.x",
+    "react": ">=18"
+  }
+}

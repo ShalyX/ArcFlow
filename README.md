@@ -48,6 +48,73 @@ http://127.0.0.1:5173
 
 See [DEMO.md](./DEMO.md) for the two-minute demo script.
 
+## Developer SDK
+
+The repo includes the first SDK surface in `packages/sdk`.
+
+```ts
+import { ArcFlow } from "@arcflow/sdk";
+
+const arcflow = new ArcFlow({
+  baseUrl: "http://127.0.0.1:8787/api",
+  apiKey: "test_key"
+});
+
+const intent = await arcflow.paymentIntents.create({
+  amount: "10.00",
+  receiver: "0x0000000000000000000000000000000000000001",
+  description: "API access unlock",
+  template: "access-unlock",
+  metadata: {
+    customerId: "cus_123",
+    productId: "api_basic"
+  }
+});
+```
+
+Webhook verification:
+
+```ts
+import { verifyArcFlowWebhook } from "@arcflow/sdk/webhooks";
+
+const event = verifyArcFlowWebhook({
+  payload: rawBody,
+  signature: req.headers["x-arcflow-signature"],
+  secret: process.env.WEBHOOK_SIGNING_SECRET
+});
+```
+
+React helpers live in `packages/react`.
+
+```tsx
+import { ArcFlowProvider, PaymentButton } from "@arcflow/react";
+
+export function Checkout({ intentId }: { intentId: string }) {
+  return (
+    <ArcFlowProvider baseUrl="http://127.0.0.1:8787/api">
+      <PaymentButton intentId={intentId}>Pay with USDC on Arc</PaymentButton>
+    </ArcFlowProvider>
+  );
+}
+```
+
+## Merchant Example
+
+Run the example merchant webhook receiver:
+
+```bash
+npm run example:merchant
+```
+
+It exposes:
+
+```txt
+POST http://127.0.0.1:9090/webhooks/arcflow
+GET  http://127.0.0.1:9090/access/:customerId
+```
+
+The example verifies `x-arcflow-signature`, then unlocks access when it receives `payment_intent.paid`.
+
 The API runs on:
 
 ```txt

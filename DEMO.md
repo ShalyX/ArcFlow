@@ -20,6 +20,7 @@ ArcFlow gives USDC apps on Arc a payment event layer: create intents, settle pay
    - A webhook delivery attempt was recorded.
    - The flow logs explain each step.
 8. Restart the API and refresh the console to show the payment trail persisted.
+9. Show the SDK snippets in the README to make the developer integration path clear.
 
 ## Talk Track
 

@@ -91,16 +91,18 @@ app.post("/api/payment-intents/:id/confirm", async (request, response) => {
       metadata: intent.metadata
     });
     markIntentPaid(intent.id, verified.txHash, receipt.id);
+    const paidIntent = getPaymentIntent(intent.id) || intent;
     await deliverWebhooks({
       type: "payment_intent.paid",
       data: {
         paymentIntentId: intent.id,
         amount: intent.amount,
         txHash: verified.txHash,
-        receiptUrl: receipt.receiptUrl
+        receiptUrl: receipt.receiptUrl,
+        ...intent.metadata
       }
     });
-    response.json({ intent, receipt });
+    response.json({ intent: paidIntent, receipt });
   } catch (error) {
     addLog({
       level: "error",
@@ -132,6 +134,7 @@ app.post("/api/payment-intents/:id/demo-settle", async (request, response) => {
     metadata: intent.metadata
   });
   markIntentPaid(intent.id, receipt.txHash, receipt.id);
+  const paidIntent = getPaymentIntent(intent.id) || intent;
   addLog({
     level: "success",
     type: "payment_intent.demo_settled",
@@ -141,14 +144,15 @@ app.post("/api/payment-intents/:id/demo-settle", async (request, response) => {
   });
   await deliverWebhooks({
     type: "payment_intent.paid",
-    data: {
-      paymentIntentId: intent.id,
-      amount: intent.amount,
-      txHash: receipt.txHash,
-      receiptUrl: receipt.receiptUrl
-    }
+      data: {
+        paymentIntentId: intent.id,
+        amount: intent.amount,
+        txHash: receipt.txHash,
+        receiptUrl: receipt.receiptUrl,
+        ...intent.metadata
+      }
   });
-  response.json({ intent, receipt });
+  response.json({ intent: paidIntent, receipt });
 });
 
 app.post("/api/webhooks", (request, response) => {
