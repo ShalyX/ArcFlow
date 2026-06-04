@@ -603,6 +603,27 @@ tr:last-child td {
   border: 1px solid var(--line);
 }
 
+.wallet-chip {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(15, 122, 79, 0.25);
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: rgba(15, 122, 79, 0.08);
+  color: var(--green);
+}
+
+.wallet-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+}
+
 code {
   overflow-wrap: anywhere;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;

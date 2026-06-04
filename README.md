@@ -145,9 +145,15 @@ Arc native gas uses 18 decimals, but ArcFlow payment amounts use ERC-20 USDC and
 
 1. Create a payment intent in the console.
 2. Open the hosted checkout URL.
-3. Send USDC on Arc Testnet to the receiver address.
-4. Paste the transaction hash to verify the payment.
-5. ArcFlow issues a receipt, sends matching webhooks, and records logs.
+3. Connect an injected wallet on Arc Testnet.
+4. Approve the ERC-20 USDC transfer from checkout.
+5. ArcFlow verifies the transaction hash, issues a receipt, sends matching webhooks, and records logs.
+
+Manual fallback:
+
+1. Send USDC on Arc Testnet to the receiver address.
+2. Paste the transaction hash to verify the payment.
+3. ArcFlow issues a receipt, sends matching webhooks, and records logs.
 
 For local demos, the checkout page includes a demo settlement button that creates the receipt/log flow without submitting an onchain transaction.
 

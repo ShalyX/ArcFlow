@@ -20,11 +20,13 @@ import {
   Send,
   Split,
   TerminalSquare,
+  Wallet,
   Webhook
 } from "lucide-react";
 import { confirmPayment, createPaymentIntent, demoSettlePayment, getDashboardState, getPaymentIntent, resetDemoData, seedDemoIntent } from "./api";
 import { ARC_TESTNET, formatUsdc } from "./shared/arc";
 import type { CreateIntentInput, DashboardState, EventLog, PaymentIntent, Receipt, TemplateKey } from "./shared/types";
+import { connectAndPayIntent } from "./walletCheckout";
 import "./styles.css";
 
 const templateOptions: Array<{ key: TemplateKey; title: string; copy: string; icon: React.ElementType }> = [
@@ -446,6 +448,7 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
   const [intent, setIntent] = useState<PaymentIntent | null>(null);
   const [txHash, setTxHash] = useState("");
   const [message, setMessage] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -483,6 +486,25 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
     }
   }
 
+  async function payWithWallet() {
+    if (!intent) return;
+    setBusy(true);
+    setMessage("Connect your wallet, approve Arc Testnet, then confirm the USDC transfer.");
+    try {
+      const payment = await connectAndPayIntent(intent);
+      setWalletAddress(payment.account);
+      setTxHash(payment.txHash);
+      setMessage("Transfer confirmed on Arc. Issuing ArcFlow receipt...");
+      await confirmPayment(intent.id, { txHash: payment.txHash });
+      setIntent(await getPaymentIntent(intent.id));
+      setMessage("Payment verified and receipt issued.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Wallet checkout failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="checkout-shell">
       <section className="checkout-panel">
@@ -501,6 +523,16 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
               <code>{intent.receiver}</code>
               <small>USDC token: {ARC_TESTNET.usdcAddress}</small>
             </div>
+            <button className="primary-button full-width" onClick={payWithWallet} disabled={busy || intent.status === "paid"}>
+              {busy ? <Loader2 className="spin" size={18} /> : <Wallet size={18} />}
+              Connect wallet and pay
+            </button>
+            {walletAddress && (
+              <div className="wallet-chip">
+                <Wallet size={16} />
+                <span>{walletAddress}</span>
+              </div>
+            )}
             <form onSubmit={submitConfirmation}>
               <label>
                 Transaction hash
