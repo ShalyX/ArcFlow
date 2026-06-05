@@ -7,14 +7,14 @@ import type { DashboardState, EventLog, PaymentIntent, Receipt, WebhookDelivery,
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
 const dataDir = path.resolve("data");
-const dbPath = path.join(dataDir, "arcflow.sqlite");
+const dbPath = process.env.ARCFLOW_DB_PATH ? path.resolve(process.env.ARCFLOW_DB_PATH) : path.join(dataDir, "arcflow.sqlite");
 
 let db: Database;
 
 type Row = Record<string, unknown>;
 
 export async function initStore() {
-  mkdirSync(dataDir, { recursive: true });
+  mkdirSync(path.dirname(dbPath), { recursive: true });
   const SQL = await initSqlJs();
   db = existsSync(dbPath) ? new SQL.Database(readFileSync(dbPath)) : new SQL.Database();
   migrate();

@@ -67,6 +67,7 @@ SQLite DB:     data/arcflow.sqlite
 npm run dev:all      # API, console, merchant demo
 npm run demo:seed    # create a 10 USDC demo intent
 npm run demo:reset   # clear demo payment trail
+npm test             # payment verifier and webhook regression tests
 npm run build        # typecheck and production build
 ```
 
@@ -246,6 +247,8 @@ ArcFlow only marks an intent paid after the verifier confirms:
 - Payment intent is still pending.
 
 The amount match is exact, so underpaid transfers do not settle an intent.
+
+Regression tests cover wrong receiver, wrong token, underpayment, duplicate transaction hash reuse, already-paid intent replay, pending intent settlement, and webhook signature verification.
 
 ## API Sketch
 

@@ -1,4 +1,4 @@
-import { createPublicClient, decodeEventLog, http, isAddress, zeroAddress } from "viem";
+import { createPublicClient, decodeEventLog, http, isAddress, zeroAddress, type Hex } from "viem";
 import { arcTestnet } from "viem/chains";
 import { ARC_TESTNET } from "../src/shared/arc";
 import type { PaymentIntent } from "../src/shared/types";
@@ -16,6 +16,12 @@ const transferAbi = [
   }
 ] as const;
 
+export type TransferLogCandidate = {
+  address: `0x${string}`;
+  data: Hex;
+  topics: readonly Hex[];
+};
+
 export type VerifiedPayment = {
   payer: `0x${string}`;
   txHash: `0x${string}`;
@@ -28,6 +34,48 @@ export type VerifiedPayment = {
 
 export function validateIntentAddress(address: string): address is `0x${string}` {
   return isAddress(address) && address !== zeroAddress;
+}
+
+export function findMatchingUsdcTransfer({
+  logs,
+  expectedReceiver,
+  expectedAmount,
+  usdcAddress
+}: {
+  logs: readonly TransferLogCandidate[];
+  expectedReceiver: `0x${string}`;
+  expectedAmount: string;
+  usdcAddress: `0x${string}`;
+}) {
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== usdcAddress.toLowerCase()) continue;
+
+    try {
+      const decoded = decodeEventLog({
+        abi: transferAbi,
+        data: log.data,
+        topics: [...log.topics] as [] | [signature: Hex, ...args: Hex[]]
+      });
+
+      if (decoded.eventName !== "Transfer") continue;
+      const { from, to, value } = decoded.args;
+      const amountMatches = value === BigInt(expectedAmount);
+      const receiverMatches = to.toLowerCase() === expectedReceiver.toLowerCase();
+
+      if (amountMatches && receiverMatches) {
+        return {
+          payer: from,
+          tokenAddress: log.address,
+          receiver: to,
+          amount: value.toString()
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 export async function verifyArcUsdcTransfer(intent: PaymentIntent, txHash: `0x${string}`): Promise<VerifiedPayment> {
@@ -54,35 +102,20 @@ export async function verifyArcUsdcTransfer(intent: PaymentIntent, txHash: `0x${
     throw new Error("Transaction did not call the Arc ERC-20 USDC token contract.");
   }
 
-  for (const log of receipt.logs) {
-    if (log.address.toLowerCase() !== ARC_TESTNET.usdcAddress.toLowerCase()) continue;
+  const match = findMatchingUsdcTransfer({
+    logs: receipt.logs,
+    expectedReceiver: intent.receiver,
+    expectedAmount: intent.amount,
+    usdcAddress: ARC_TESTNET.usdcAddress
+  });
 
-    try {
-      const decoded = decodeEventLog({
-        abi: transferAbi,
-        data: log.data,
-        topics: log.topics
-      });
-
-      if (decoded.eventName !== "Transfer") continue;
-      const { from, to, value } = decoded.args;
-      const amountMatches = value === BigInt(intent.amount);
-      const receiverMatches = to.toLowerCase() === intent.receiver.toLowerCase();
-
-      if (amountMatches && receiverMatches) {
-        return {
-          payer: from,
-          txHash,
-          tokenAddress: log.address,
-          receiver: to,
-          amount: value.toString(),
-          chainId,
-          blockNumber: receipt.blockNumber.toString()
-        };
-      }
-    } catch {
-      continue;
-    }
+  if (match) {
+    return {
+      ...match,
+      txHash,
+      chainId,
+      blockNumber: receipt.blockNumber.toString()
+    };
   }
 
   throw new Error("No matching Arc USDC transfer was found in that transaction.");
