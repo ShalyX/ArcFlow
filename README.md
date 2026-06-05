@@ -10,6 +10,7 @@ This first build focuses on the core product:
 - Hosted checkout links
 - Receipts
 - Webhook delivery
+- Webhook endpoint management
 - Event logs
 - Starter templates
 - SQLite persistence
@@ -344,3 +345,4 @@ Webhook payloads are signed with `x-arcflow-signature` using HMAC-SHA256.
 - No API authentication yet.
 - No production deployment profile yet.
 - Webhook delivery history exists, but endpoint management and retry controls are still minimal.
+- Webhook endpoint management is local-only and does not include production authentication yet.

@@ -72,6 +72,7 @@ function migrate() {
       http_status INTEGER,
       attempt INTEGER NOT NULL,
       error TEXT,
+      payload TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -85,6 +86,14 @@ function migrate() {
       created_at TEXT NOT NULL
     );
   `);
+  addColumnIfMissing("webhook_deliveries", "payload", "TEXT");
+}
+
+function addColumnIfMissing(table: string, column: string, definition: string) {
+  const columns = db.exec(`PRAGMA table_info(${table})`)[0]?.values.map((value) => String(value[1])) || [];
+  if (!columns.includes(column)) {
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 function seedDefaultWebhook() {
@@ -180,6 +189,7 @@ function mapDelivery(row: Row): WebhookDelivery {
     httpStatus: row.http_status == null ? undefined : Number(row.http_status),
     attempt: Number(row.attempt),
     error: asOptionalText(row.error),
+    payload: parseJson<Record<string, unknown> | undefined>(row.payload, undefined),
     createdAt: asText(row.created_at)
   };
 }
@@ -337,6 +347,63 @@ export function addWebhook(input: Pick<WebhookEndpoint, "url" | "events" | "enab
   return webhook;
 }
 
+export function updateWebhook(
+  webhookId: string,
+  input: Partial<Pick<WebhookEndpoint, "url" | "events" | "enabled">>
+) {
+  const existing = getWebhook(webhookId);
+  if (!existing) return undefined;
+
+  const updated: WebhookEndpoint = {
+    ...existing,
+    url: input.url ?? existing.url,
+    events: input.events ?? existing.events,
+    enabled: input.enabled ?? existing.enabled
+  };
+
+  db.run("UPDATE webhooks SET url = ?, events = ?, enabled = ? WHERE id = ?", [
+    updated.url,
+    JSON.stringify(updated.events),
+    updated.enabled ? 1 : 0,
+    webhookId
+  ]);
+  addLog(
+    {
+      level: "info",
+      type: "webhook.updated",
+      message: `Updated webhook endpoint ${updated.url}.`
+    },
+    false
+  );
+  persist();
+  return updated;
+}
+
+export function deleteWebhook(webhookId: string) {
+  const existing = getWebhook(webhookId);
+  if (!existing) return false;
+
+  db.run("DELETE FROM webhooks WHERE id = ?", [webhookId]);
+  addLog(
+    {
+      level: "warning",
+      type: "webhook.deleted",
+      message: `Deleted webhook endpoint ${existing.url}.`
+    },
+    false
+  );
+  persist();
+  return true;
+}
+
+export function getWebhook(webhookId: string) {
+  return getOne("SELECT * FROM webhooks WHERE id = ?", [webhookId], mapWebhook);
+}
+
+export function getWebhookDelivery(deliveryId: string) {
+  return getOne("SELECT * FROM webhook_deliveries WHERE id = ?", [deliveryId], mapDelivery);
+}
+
 export function addWebhookDelivery(input: Omit<WebhookDelivery, "id" | "createdAt">) {
   const delivery: WebhookDelivery = {
     ...input,
@@ -345,8 +412,8 @@ export function addWebhookDelivery(input: Omit<WebhookDelivery, "id" | "createdA
   };
   db.run(
     `INSERT INTO webhook_deliveries
-      (id, webhook_id, event_type, endpoint_url, status, http_status, attempt, error, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, webhook_id, event_type, endpoint_url, status, http_status, attempt, error, payload, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       delivery.id,
       delivery.webhookId || null,
@@ -356,6 +423,7 @@ export function addWebhookDelivery(input: Omit<WebhookDelivery, "id" | "createdA
       delivery.httpStatus || null,
       delivery.attempt,
       delivery.error || null,
+      delivery.payload ? JSON.stringify(delivery.payload) : null,
       delivery.createdAt
     ]
   );

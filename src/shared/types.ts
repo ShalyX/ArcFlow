@@ -46,6 +46,7 @@ export type WebhookDelivery = {
   httpStatus?: number;
   attempt: number;
   error?: string;
+  payload?: Record<string, unknown>;
   createdAt: string;
 };
 

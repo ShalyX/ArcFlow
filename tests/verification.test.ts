@@ -150,6 +150,27 @@ describe("payment intent API guards", () => {
     const reuse = await postRaw(`${apiBase}/payment-intents/${second.id}/confirm`, { txHash: settled.receipt.txHash });
     assert.equal(reuse.status, 409);
   });
+
+  it("manages webhook endpoints and records test delivery attempts", async () => {
+    const webhook = await post(`${apiBase}/webhooks`, {
+      url: "http://127.0.0.1:1/webhooks/arcflow",
+      events: ["payment_intent.paid"],
+      enabled: true
+    });
+
+    assert.equal(webhook.enabled, true);
+    assert.equal(webhook.events[0], "payment_intent.paid");
+
+    const updated = await patch(`${apiBase}/webhooks/${webhook.id}`, { enabled: false });
+    assert.equal(updated.enabled, false);
+
+    const tested = await post(`${apiBase}/webhooks/${webhook.id}/test`);
+    assert.ok(tested.webhookDeliveries.length > 0);
+    assert.equal(tested.webhookDeliveries[0].status, "failed");
+
+    const deleted = await fetch(`${apiBase}/webhooks/${webhook.id}`, { method: "DELETE" });
+    assert.equal(deleted.status, 204);
+  });
 });
 
 async function post(url: string, body?: unknown) {
@@ -173,6 +194,17 @@ async function postRaw(url: string, body?: unknown) {
     status: response.status,
     body: await response.json()
   };
+}
+
+async function patch(url: string, body?: unknown) {
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || `PATCH ${url} failed`);
+  return payload;
 }
 
 async function waitForHealth(url: string) {

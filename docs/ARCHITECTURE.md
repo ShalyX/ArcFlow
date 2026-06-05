@@ -15,6 +15,7 @@ It provides:
 - Wallet checkout
 - Receipt viewing
 - Webhook event history
+- Webhook endpoint management
 - Merchant unlock status
 - Demo seed/reset controls
 
@@ -31,6 +32,11 @@ It provides:
 - `GET /api/state`
 - `POST /api/demo/seed`
 - `POST /api/demo/reset`
+- `POST /api/webhooks`
+- `PATCH /api/webhooks/:id`
+- `DELETE /api/webhooks/:id`
+- `POST /api/webhooks/:id/test`
+- `POST /api/webhook-deliveries/:id/retry`
 
 **SQLite Store**
 

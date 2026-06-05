@@ -16,16 +16,31 @@ import {
   Link2,
   Loader2,
   LockKeyhole,
+  Plus,
   ReceiptText,
+  Trash2,
   Send,
   Split,
   TerminalSquare,
   Wallet,
   Webhook
 } from "lucide-react";
-import { confirmPayment, createPaymentIntent, demoSettlePayment, getDashboardState, getPaymentIntent, resetDemoData, seedDemoIntent } from "./api";
+import {
+  confirmPayment,
+  createPaymentIntent,
+  createWebhook,
+  deleteWebhook,
+  demoSettlePayment,
+  getDashboardState,
+  getPaymentIntent,
+  resetDemoData,
+  retryWebhookDelivery,
+  seedDemoIntent,
+  testWebhook,
+  updateWebhook
+} from "./api";
 import { ARC_TESTNET, formatUsdc } from "./shared/arc";
-import type { CreateIntentInput, DashboardState, EventLog, PaymentIntent, Receipt, TemplateKey } from "./shared/types";
+import type { CreateIntentInput, DashboardState, EventLog, PaymentIntent, Receipt, TemplateKey, WebhookEndpoint } from "./shared/types";
 import { connectAndPayIntent, type WalletCheckoutStep } from "./walletCheckout";
 import "./styles.css";
 
@@ -242,25 +257,12 @@ function Dashboard({
 
         <section id="webhooks" className="section-band">
           <SectionTitle icon={Webhook} title="Webhook Events" />
-          <WebhookDeliveries deliveries={state.webhookDeliveries} />
+          <WebhookDeliveries deliveries={state.webhookDeliveries} onRefresh={onRefresh} />
         </section>
 
         <section className="section-band">
           <SectionTitle icon={Webhook} title="Webhook Endpoints" />
-          <div className="webhook-list">
-            {state.webhooks.map((webhook) => (
-              <article className="line-card" key={webhook.id}>
-                <Webhook size={19} />
-                <div>
-                  <strong>{webhook.url}</strong>
-                  <span>{webhook.enabled ? "Enabled" : "Disabled"} · {webhook.events.join(", ")}</span>
-                </div>
-              </article>
-            ))}
-            {state.webhooks.length === 0 && (
-              <div className="empty-state">Webhook endpoints are where ArcFlow sends signed payment events after verification.</div>
-            )}
-          </div>
+          <WebhookEndpointManager webhooks={state.webhooks} onRefresh={onRefresh} />
         </section>
 
         <section id="config" className="section-band">
@@ -296,6 +298,117 @@ function Dashboard({
         </section>
       </section>
     </main>
+  );
+}
+
+const supportedWebhookEvents = ["payment_intent.paid", "receipt.issued"];
+
+function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndpoint[]; onRefresh: () => Promise<void> }) {
+  const [url, setUrl] = useState("http://127.0.0.1:9090/webhooks/arcflow");
+  const [events, setEvents] = useState<string[]>(["payment_intent.paid"]);
+  const [enabled, setEnabled] = useState(true);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
+  function toggleEvent(event: string) {
+    setEvents((current) => current.includes(event) ? current.filter((item) => item !== event) : [...current, event]);
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy("create");
+    setError("");
+    try {
+      await createWebhook({ url, events, enabled });
+      await onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create webhook endpoint.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function run(action: string, callback: () => Promise<unknown>) {
+    setBusy(action);
+    setError("");
+    try {
+      await callback();
+      await onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Webhook action failed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="webhook-manager">
+      <form className="panel compact-panel" onSubmit={submit}>
+        <div className="panel-heading">
+          <Plus size={20} />
+          <div>
+            <h2>Add Endpoint</h2>
+            <p>Receive signed ArcFlow payment events.</p>
+          </div>
+        </div>
+        <label>
+          Endpoint URL
+          <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com/webhooks/arcflow" />
+        </label>
+        <fieldset className="event-checkboxes">
+          <legend>Events</legend>
+          {supportedWebhookEvents.map((event) => (
+            <label key={event}>
+              <input type="checkbox" checked={events.includes(event)} onChange={() => toggleEvent(event)} />
+              {event}
+            </label>
+          ))}
+        </fieldset>
+        <label className="inline-check">
+          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+          Enable endpoint
+        </label>
+        {error && <div className="error">{error}</div>}
+        <button className="primary-button" disabled={Boolean(busy) || events.length === 0}>
+          {busy === "create" ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
+          Add webhook
+        </button>
+      </form>
+
+      <div className="webhook-list">
+        {webhooks.map((webhook) => (
+          <article className="webhook-card" key={webhook.id}>
+            <div className="line-card">
+              <Webhook size={19} />
+              <div>
+                <strong>{webhook.url}</strong>
+                <span>{webhook.enabled ? "Enabled" : "Disabled"} · {webhook.events.join(", ")}</span>
+              </div>
+            </div>
+            <div className="webhook-actions">
+              <button
+                className="tiny-button"
+                onClick={() => run(`toggle-${webhook.id}`, () => updateWebhook(webhook.id, { enabled: !webhook.enabled }))}
+              >
+                {busy === `toggle-${webhook.id}` ? <Loader2 className="spin" size={15} /> : <Activity size={15} />}
+                {webhook.enabled ? "Disable" : "Enable"}
+              </button>
+              <button className="tiny-button" onClick={() => run(`test-${webhook.id}`, () => testWebhook(webhook.id))}>
+                {busy === `test-${webhook.id}` ? <Loader2 className="spin" size={15} /> : <Send size={15} />}
+                Send test
+              </button>
+              <button className="tiny-button danger-button" onClick={() => run(`delete-${webhook.id}`, () => deleteWebhook(webhook.id))}>
+                {busy === `delete-${webhook.id}` ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />}
+                Delete
+              </button>
+            </div>
+          </article>
+        ))}
+        {webhooks.length === 0 && (
+          <div className="empty-state">Webhook endpoints are where ArcFlow sends signed payment events after verification.</div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -807,37 +920,67 @@ function ReceiptGrid({ receipts, onNavigate }: { receipts: Receipt[]; onNavigate
   );
 }
 
-function WebhookDeliveries({ deliveries }: { deliveries: DashboardState["webhookDeliveries"] }) {
+function WebhookDeliveries({ deliveries, onRefresh }: { deliveries: DashboardState["webhookDeliveries"]; onRefresh: () => Promise<void> }) {
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
   if (deliveries.length === 0) return <div className="empty-state">Webhook events show what ArcFlow told your app after payment verification.</div>;
 
+  async function retry(deliveryId: string) {
+    setBusy(deliveryId);
+    setError("");
+    try {
+      await retryWebhookDelivery(deliveryId);
+      await onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not retry delivery.");
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
-    <div className="table-surface">
-      <table>
-        <thead>
-          <tr>
-            <th>Event</th>
-            <th>Status</th>
-            <th>Endpoint</th>
-            <th>HTTP</th>
-            <th>Attempt</th>
-          </tr>
-        </thead>
-        <tbody>
-          {deliveries.map((delivery) => (
-            <tr key={delivery.id}>
-              <td>
-                <strong>{delivery.eventType}</strong>
-                <small>{new Date(delivery.createdAt).toLocaleString()}</small>
-              </td>
-              <td><Status value={delivery.status} /></td>
-              <td>{delivery.endpointUrl || "No matching enabled endpoint"}</td>
-              <td>{delivery.httpStatus || "-"}</td>
-              <td>{delivery.attempt}</td>
+    <>
+      {error && <div className="error">{error}</div>}
+      <div className="table-surface">
+        <table>
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Status</th>
+              <th>Endpoint</th>
+              <th>HTTP</th>
+              <th>Attempt</th>
+              <th></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {deliveries.map((delivery) => (
+              <tr key={delivery.id}>
+                <td>
+                  <strong>{delivery.eventType}</strong>
+                  <small>{new Date(delivery.createdAt).toLocaleString()}</small>
+                </td>
+                <td><Status value={delivery.status} /></td>
+                <td>{delivery.endpointUrl || "No matching enabled endpoint"}</td>
+                <td>{delivery.httpStatus || "-"}</td>
+                <td>{delivery.attempt}</td>
+                <td>
+                  {delivery.status === "failed" && delivery.webhookId ? (
+                    <button className="tiny-button" onClick={() => retry(delivery.id)} disabled={Boolean(busy)}>
+                      {busy === delivery.id ? <Loader2 className="spin" size={15} /> : <Activity size={15} />}
+                      Retry
+                    </button>
+                  ) : (
+                    <span className="muted-dash">-</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

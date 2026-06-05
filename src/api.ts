@@ -1,4 +1,4 @@
-import type { ConfirmPaymentInput, CreateIntentInput, DashboardState, PaymentIntent } from "./shared/types";
+import type { ConfirmPaymentInput, CreateIntentInput, DashboardState, PaymentIntent, WebhookEndpoint } from "./shared/types";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
@@ -52,6 +52,38 @@ export function seedDemoIntent() {
 
 export function resetDemoData() {
   return request<DashboardState>("/demo/reset", {
+    method: "POST"
+  });
+}
+
+export function createWebhook(input: Pick<WebhookEndpoint, "url" | "events" | "enabled">) {
+  return request<WebhookEndpoint>("/webhooks", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function updateWebhook(id: string, input: Partial<Pick<WebhookEndpoint, "url" | "events" | "enabled">>) {
+  return request<WebhookEndpoint>(`/webhooks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export function deleteWebhook(id: string) {
+  return fetch(`/api/webhooks/${id}`, { method: "DELETE" }).then((response) => {
+    if (!response.ok) throw new Error("Could not delete webhook endpoint.");
+  });
+}
+
+export function testWebhook(id: string) {
+  return request<DashboardState>(`/webhooks/${id}/test`, {
+    method: "POST"
+  });
+}
+
+export function retryWebhookDelivery(id: string) {
+  return request<DashboardState>(`/webhook-deliveries/${id}/retry`, {
     method: "POST"
   });
 }
