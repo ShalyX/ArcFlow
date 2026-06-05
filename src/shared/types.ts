@@ -64,6 +64,20 @@ export type EventLog = {
   createdAt: string;
 };
 
+export type ApiKey = {
+  id: string;
+  name: string;
+  keyPreview: string;
+  enabled: boolean;
+  createdAt: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+};
+
+export type CreatedApiKey = ApiKey & {
+  key: string;
+};
+
 export type TemplateKey = "payment-link" | "access-unlock" | "invoice";
 
 export type DashboardState = {
@@ -71,6 +85,7 @@ export type DashboardState = {
   receipts: Receipt[];
   webhooks: WebhookEndpoint[];
   webhookDeliveries: WebhookDelivery[];
+  apiKeys: ApiKey[];
   logs: EventLog[];
 };
 

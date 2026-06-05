@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import initSqlJs, { type Database, type SqlValue } from "sql.js";
-import type { DashboardState, EventLog, PaymentIntent, Receipt, WebhookDelivery, WebhookEndpoint } from "../src/shared/types";
+import type { ApiKey, DashboardState, EventLog, PaymentIntent, Receipt, WebhookDelivery, WebhookEndpoint } from "../src/shared/types";
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
@@ -90,6 +90,17 @@ function migrate() {
       payment_intent_id TEXT,
       receipt_id TEXT,
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      key_preview TEXT NOT NULL,
+      enabled INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      last_used_at TEXT,
+      revoked_at TEXT
     );
   `);
   addColumnIfMissing("webhook_deliveries", "payload", "TEXT");
@@ -233,14 +244,93 @@ function mapLog(row: Row): EventLog {
   };
 }
 
+function mapApiKey(row: Row): ApiKey {
+  return {
+    id: asText(row.id),
+    name: asText(row.name),
+    keyPreview: asText(row.key_preview),
+    enabled: Boolean(row.enabled),
+    createdAt: asText(row.created_at),
+    lastUsedAt: asOptionalText(row.last_used_at),
+    revokedAt: asOptionalText(row.revoked_at)
+  };
+}
+
 export function getState(): DashboardState {
   return {
     paymentIntents: all("SELECT * FROM payment_intents ORDER BY created_at DESC", [], mapIntent),
     receipts: all("SELECT * FROM receipts ORDER BY issued_at DESC", [], mapReceipt),
     webhooks: all("SELECT * FROM webhooks ORDER BY created_at DESC", [], mapWebhook),
     webhookDeliveries: all("SELECT * FROM webhook_deliveries ORDER BY created_at DESC", [], mapDelivery),
+    apiKeys: listApiKeys(),
     logs: all("SELECT * FROM event_logs ORDER BY created_at DESC", [], mapLog)
   };
+}
+
+export function listApiKeys() {
+  return all("SELECT * FROM api_keys ORDER BY created_at DESC", [], mapApiKey);
+}
+
+export function countActiveApiKeys() {
+  return Number(db.exec("SELECT COUNT(*) AS count FROM api_keys WHERE enabled = 1 AND revoked_at IS NULL")[0]?.values[0]?.[0] || 0);
+}
+
+export function createApiKey(name: string) {
+  const createdAt = now();
+  const key = createApiKeySecret();
+  const apiKey: ApiKey = {
+    id: id("ak"),
+    name: name.trim() || "Default key",
+    keyPreview: previewApiKey(key),
+    enabled: true,
+    createdAt
+  };
+  db.run(
+    "INSERT INTO api_keys (id, name, key_hash, key_preview, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    [apiKey.id, apiKey.name, hashApiKey(key), apiKey.keyPreview, 1, apiKey.createdAt]
+  );
+  addLog(
+    {
+      level: "success",
+      type: "api_key.created",
+      message: `Created API key ${apiKey.name}.`
+    },
+    false
+  );
+  persist();
+  return { ...apiKey, key };
+}
+
+export function verifyApiKey(secret?: string) {
+  const key = String(secret || "").trim();
+  if (!key) return undefined;
+  const apiKey = getOne(
+    "SELECT * FROM api_keys WHERE key_hash = ? AND enabled = 1 AND revoked_at IS NULL",
+    [hashApiKey(key)],
+    mapApiKey
+  );
+  if (!apiKey) return undefined;
+  const lastUsedAt = now();
+  db.run("UPDATE api_keys SET last_used_at = ? WHERE id = ?", [lastUsedAt, apiKey.id]);
+  persist();
+  return { ...apiKey, lastUsedAt };
+}
+
+export function revokeApiKey(apiKeyId: string) {
+  const existing = getOne("SELECT * FROM api_keys WHERE id = ?", [apiKeyId], mapApiKey);
+  if (!existing) return undefined;
+  const revokedAt = now();
+  db.run("UPDATE api_keys SET enabled = 0, revoked_at = ? WHERE id = ?", [revokedAt, apiKeyId]);
+  addLog(
+    {
+      level: "warning",
+      type: "api_key.revoked",
+      message: `Revoked API key ${existing.name}.`
+    },
+    false
+  );
+  persist();
+  return { ...existing, enabled: false, revokedAt };
 }
 
 export function createPaymentIntent(input: Omit<PaymentIntent, "id" | "status" | "checkoutUrl" | "createdAt" | "updatedAt">) {
@@ -584,6 +674,18 @@ export function isDemoMerchantWebhookUrl(url?: string) {
 
 function demoMerchantWebhookSecret() {
   return process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret";
+}
+
+function createApiKeySecret() {
+  return `ak_test_${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`;
+}
+
+function hashApiKey(key: string) {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+function previewApiKey(key: string) {
+  return `${key.slice(0, 12)}...${key.slice(-6)}`;
 }
 
 function createWebhookSecret() {

@@ -27,16 +27,21 @@ import {
 } from "lucide-react";
 import {
   confirmPayment,
+  clearStoredApiKey,
+  createApiKey,
   createPaymentIntent,
   createWebhook,
   deleteWebhook,
   demoSettlePayment,
   getDashboardState,
   getPaymentIntent,
+  getStoredApiKey,
   resetDemoData,
+  revokeApiKey,
   retryWebhookDelivery,
   rotateWebhookSecret,
   seedDemoIntent,
+  saveStoredApiKey,
   testWebhook,
   updateWebhook
 } from "./api";
@@ -63,6 +68,7 @@ const initialState: DashboardState = {
   receipts: [],
   webhooks: [],
   webhookDeliveries: [],
+  apiKeys: [],
   logs: []
 };
 
@@ -268,7 +274,7 @@ function Dashboard({
 
         <section id="config" className="section-band">
           <SectionTitle icon={Code2} title="Developer Config" />
-          <DeveloperConfig />
+          <DeveloperConfig apiKeys={state.apiKeys} onRefresh={onRefresh} />
         </section>
 
         <section id="templates" className="section-band">
@@ -572,27 +578,163 @@ function TrailPanel({ state }: { state: DashboardState }) {
   );
 }
 
-function DeveloperConfig() {
+function DeveloperConfig({ apiKeys, onRefresh }: { apiKeys: DashboardState["apiKeys"]; onRefresh: () => Promise<void> }) {
+  const [name, setName] = useState("Local console key");
+  const [manualKey, setManualKey] = useState(getStoredApiKey());
+  const [createdKey, setCreatedKey] = useState("");
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const activeKey = getStoredApiKey();
   const config = [
     { label: "API base", value: "http://127.0.0.1:8787/api" },
     { label: "SDK package", value: "@arcflow/sdk" },
     { label: "React package", value: "@arcflow/react" },
+    { label: "API key header", value: "x-arcflow-api-key" },
     { label: "Webhook header", value: "x-arcflow-signature" },
     { label: "Arc RPC", value: ARC_TESTNET.rpcUrl },
     { label: "USDC token", value: ARC_TESTNET.usdcAddress }
   ];
 
+  async function createKey(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy("create");
+    setError("");
+    try {
+      const apiKey = await createApiKey(name);
+      saveStoredApiKey(apiKey.key);
+      setManualKey(apiKey.key);
+      setCreatedKey(apiKey.key);
+      await onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create API key.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function revokeKey(id: string) {
+    setBusy(`revoke-${id}`);
+    setError("");
+    try {
+      await revokeApiKey(id);
+      await onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not revoke API key.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function saveManualKey() {
+    saveStoredApiKey(manualKey);
+    setManualKey(getStoredApiKey());
+  }
+
+  function clearManualKey() {
+    clearStoredApiKey();
+    setManualKey("");
+  }
+
   return (
-    <div className="config-grid">
-      {config.map((item) => (
-        <article className="config-item" key={item.label}>
-          <span>{item.label}</span>
-          <code>{item.value}</code>
-          <button className="icon-button compact" onClick={() => navigator.clipboard.writeText(item.value)} aria-label={`Copy ${item.label}`} title={`Copy ${item.label}`}>
-            <Copy size={16} />
+    <div className="developer-config">
+      <form className="panel compact-panel" onSubmit={createKey}>
+        <div className="panel-heading">
+          <KeyRound size={20} />
+          <div>
+            <h2>API Keys</h2>
+            <p>Protect payment and webhook mutation routes.</p>
+          </div>
+        </div>
+        <label>
+          Key name
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Production server key" />
+        </label>
+        {error && <div className="error">{error}</div>}
+        <button className="primary-button" disabled={Boolean(busy)}>
+          {busy === "create" ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
+          Create API key
+        </button>
+        {createdKey && (
+          <div className="secret-line key-secret">
+            <span>New key</span>
+            <code>{createdKey}</code>
+            <button className="tiny-button" type="button" onClick={() => navigator.clipboard.writeText(createdKey)}>
+              <Copy size={15} />
+              Copy
+            </button>
+          </div>
+        )}
+        <div className="field-note">Full API keys are shown once. Store server keys outside the repo.</div>
+      </form>
+
+      <div className="panel compact-panel">
+        <div className="panel-heading">
+          <Code2 size={20} />
+          <div>
+            <h2>Console Auth</h2>
+            <p>The local console sends this key with protected requests.</p>
+          </div>
+        </div>
+        <label>
+          Active API key
+          <input value={manualKey} onChange={(event) => setManualKey(event.target.value)} placeholder="ak_test_..." />
+        </label>
+        <div className="webhook-actions">
+          <button className="tiny-button" type="button" onClick={saveManualKey}>
+            <KeyRound size={15} />
+            Use key
           </button>
-        </article>
-      ))}
+          <button className="tiny-button" type="button" onClick={() => navigator.clipboard.writeText(activeKey)} disabled={!activeKey}>
+            <Copy size={15} />
+            Copy active
+          </button>
+          <button className="tiny-button danger-button" type="button" onClick={clearManualKey}>
+            <Trash2 size={15} />
+            Clear
+          </button>
+        </div>
+        <div className="field-note">{activeKey ? `Active key ${maskSecret(activeKey)}` : "No active key saved in this browser."}</div>
+      </div>
+
+      <div className="api-key-list">
+        {apiKeys.map((apiKey) => (
+          <article className="webhook-card" key={apiKey.id}>
+            <div className="line-card">
+              <KeyRound size={19} />
+              <div>
+                <strong>{apiKey.name}</strong>
+                <span>{apiKey.enabled ? "Enabled" : "Revoked"} · {apiKey.keyPreview}</span>
+              </div>
+            </div>
+            <div className="secret-line">
+              <span>Created</span>
+              <code>{new Date(apiKey.createdAt).toLocaleString()}</code>
+              <small>{apiKey.lastUsedAt ? `Last used ${new Date(apiKey.lastUsedAt).toLocaleString()}` : "Never used"}</small>
+            </div>
+            {apiKey.enabled && (
+              <div className="webhook-actions">
+                <button className="tiny-button danger-button" type="button" onClick={() => revokeKey(apiKey.id)} disabled={Boolean(busy)}>
+                  {busy === `revoke-${apiKey.id}` ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />}
+                  Revoke
+                </button>
+              </div>
+            )}
+          </article>
+        ))}
+        {apiKeys.length === 0 && <div className="empty-state">Create an API key before using protected ArcFlow mutation routes.</div>}
+      </div>
+
+      <div className="config-grid">
+        {config.map((item) => (
+          <article className="config-item" key={item.label}>
+            <span>{item.label}</span>
+            <code>{item.value}</code>
+            <button className="icon-button compact" onClick={() => navigator.clipboard.writeText(item.value)} aria-label={`Copy ${item.label}`} title={`Copy ${item.label}`}>
+              <Copy size={16} />
+            </button>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }

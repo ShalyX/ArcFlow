@@ -30,6 +30,8 @@ It provides:
 - `POST /api/payment-intents/:id/confirm`
 - `POST /api/payment-intents/:id/demo-settle`
 - `GET /api/state`
+- `POST /api/api-keys`
+- `DELETE /api/api-keys/:id`
 - `POST /api/demo/seed`
 - `POST /api/demo/reset`
 - `POST /api/webhooks`
@@ -50,6 +52,7 @@ Stored records:
 - Webhook endpoints
 - Webhook delivery attempts
 - Flow logs
+- API key metadata and hashes
 
 **Payment Verifier**
 
@@ -77,6 +80,10 @@ x-arcflow-signature
 ```
 
 Delivery attempts store the endpoint URL, event type, status, HTTP status, request payload, response body or error, signature header, attempt count, and created timestamp. The console uses that record for the Stripe-style delivery detail view and manual retries.
+
+**API Key Auth**
+
+Protected mutation routes require the `x-arcflow-api-key` header. API keys are generated as `ak_test_...` secrets, stored as SHA-256 hashes, and shown only once in the console. The first key can bootstrap from the local console without an existing key; later key creation and protected mutations require an active key.
 
 **Merchant Demo**
 

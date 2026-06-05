@@ -113,6 +113,7 @@ describe("payment intent API guards", () => {
   const apiBase = `http://127.0.0.1:${port}/api`;
   const testDb = join(process.cwd(), "data", "arcflow-test.sqlite");
   let api: ChildProcess;
+  let apiKey: string;
 
   before(async () => {
     rmSync(testDb, { force: true });
@@ -128,6 +129,8 @@ describe("payment intent API guards", () => {
     });
 
     await waitForHealth(`${apiBase}/health`);
+    const createdKey = await post(`${apiBase}/api-keys`, { name: "Regression key" });
+    apiKey = createdKey.key;
   });
 
   after(() => {
@@ -138,16 +141,16 @@ describe("payment intent API guards", () => {
   it("lets a pending intent demo-settle, rejects paid intent replay, and rejects tx hash reuse", async () => {
     await post(`${apiBase}/demo/reset`);
     const intent = await post(`${apiBase}/demo/seed`);
-    const settled = await post(`${apiBase}/payment-intents/${intent.id}/demo-settle`);
+    const settled = await post(`${apiBase}/payment-intents/${intent.id}/demo-settle`, undefined, apiKey);
 
     assert.equal(settled.intent.status, "paid");
     assert.ok(settled.receipt.txHash.startsWith("0x"));
 
-    const replay = await postRaw(`${apiBase}/payment-intents/${intent.id}/demo-settle`);
+    const replay = await postRaw(`${apiBase}/payment-intents/${intent.id}/demo-settle`, undefined, apiKey);
     assert.equal(replay.status, 409);
 
     const second = await post(`${apiBase}/demo/seed`);
-    const reuse = await postRaw(`${apiBase}/payment-intents/${second.id}/confirm`, { txHash: settled.receipt.txHash });
+    const reuse = await postRaw(`${apiBase}/payment-intents/${second.id}/confirm`, { txHash: settled.receipt.txHash }, apiKey);
     assert.equal(reuse.status, 409);
   });
 
@@ -156,7 +159,7 @@ describe("payment intent API guards", () => {
       url: "http://127.0.0.1:1/webhooks/arcflow",
       events: ["payment_intent.paid"],
       enabled: true
-    });
+    }, apiKey);
 
     assert.equal(webhook.enabled, true);
     assert.equal(webhook.events[0], "payment_intent.paid");
@@ -167,55 +170,85 @@ describe("payment intent API guards", () => {
       url: "http://127.0.0.1:1/webhooks/arcflow",
       events: ["payment_intent.paid"],
       enabled: true
-    });
+    }, apiKey);
     assert.equal(duplicate.status, 400);
 
     const badProtocol = await postRaw(`${apiBase}/webhooks`, {
       url: "ftp://example.com/webhooks/arcflow",
       events: ["payment_intent.paid"],
       enabled: true
-    });
+    }, apiKey);
     assert.equal(badProtocol.status, 400);
 
     const noEvents = await postRaw(`${apiBase}/webhooks`, {
       url: "http://127.0.0.1:2/webhooks/arcflow",
       events: [],
       enabled: true
-    });
+    }, apiKey);
     assert.equal(noEvents.status, 400);
 
-    const updated = await patch(`${apiBase}/webhooks/${webhook.id}`, { enabled: false });
+    const updated = await patch(`${apiBase}/webhooks/${webhook.id}`, { enabled: false }, apiKey);
     assert.equal(updated.enabled, false);
 
-    const rotated = await post(`${apiBase}/webhooks/${webhook.id}/rotate-secret`);
+    const rotated = await post(`${apiBase}/webhooks/${webhook.id}/rotate-secret`, undefined, apiKey);
     assert.notEqual(rotated.signingSecret, webhook.signingSecret);
     assert.match(rotated.signingSecret, /^whsec_/);
 
     const state = await fetch(`${apiBase}/state`).then((response) => response.json());
     const demoWebhook = state.webhooks.find((item: { url: string }) => item.url === "http://127.0.0.1:9090/webhooks/arcflow");
     assert.ok(demoWebhook);
-    const syncedDemo = await post(`${apiBase}/webhooks/${demoWebhook.id}/rotate-secret`);
+    const syncedDemo = await post(`${apiBase}/webhooks/${demoWebhook.id}/rotate-secret`, undefined, apiKey);
     assert.equal(syncedDemo.signingSecret, "local-dev-secret");
 
-    const tested = await post(`${apiBase}/webhooks/${webhook.id}/test`);
+    const tested = await post(`${apiBase}/webhooks/${webhook.id}/test`, undefined, apiKey);
     assert.ok(tested.webhookDeliveries.length > 0);
     assert.equal(tested.webhookDeliveries[0].status, "failed");
     assert.equal(tested.webhookDeliveries[0].attempt, 1);
     assert.ok(tested.webhookDeliveries[0].signatureHeader);
     assert.ok(tested.webhookDeliveries[0].payload);
 
-    const retried = await post(`${apiBase}/webhook-deliveries/${tested.webhookDeliveries[0].id}/retry`);
+    const retried = await post(`${apiBase}/webhook-deliveries/${tested.webhookDeliveries[0].id}/retry`, undefined, apiKey);
     assert.equal(retried.webhookDeliveries[0].attempt, 2);
 
-    const deleted = await fetch(`${apiBase}/webhooks/${webhook.id}`, { method: "DELETE" });
+    const deleted = await fetch(`${apiBase}/webhooks/${webhook.id}`, { method: "DELETE", headers: authHeaders(apiKey) });
     assert.equal(deleted.status, 204);
+  });
+
+  it("requires valid API keys for protected mutations", async () => {
+    const unauthorized = await postRaw(`${apiBase}/payment-intents`, {
+      amount: "10.00",
+      receiver,
+      description: "No key",
+      template: "payment-link"
+    });
+    assert.equal(unauthorized.status, 401);
+
+    const intent = await post(`${apiBase}/payment-intents`, {
+      amount: "10.00",
+      receiver,
+      description: "Authorized key",
+      template: "payment-link"
+    }, apiKey);
+    assert.equal(intent.status, "pending");
+
+    const temporary = await post(`${apiBase}/api-keys`, { name: "Temporary key" }, apiKey);
+    const revoked = await fetch(`${apiBase}/api-keys/${temporary.id}`, { method: "DELETE", headers: authHeaders(apiKey) });
+    assert.equal(revoked.status, 200);
+
+    const rejected = await postRaw(`${apiBase}/payment-intents`, {
+      amount: "10.00",
+      receiver,
+      description: "Revoked key",
+      template: "payment-link"
+    }, temporary.key);
+    assert.equal(rejected.status, 401);
   });
 });
 
-async function post(url: string, body?: unknown) {
+async function post(url: string, body?: unknown, apiKey?: string) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders(apiKey) },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const payload = await response.json();
@@ -223,10 +256,10 @@ async function post(url: string, body?: unknown) {
   return payload;
 }
 
-async function postRaw(url: string, body?: unknown) {
+async function postRaw(url: string, body?: unknown, apiKey?: string) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders(apiKey) },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   return {
@@ -235,15 +268,19 @@ async function postRaw(url: string, body?: unknown) {
   };
 }
 
-async function patch(url: string, body?: unknown) {
+async function patch(url: string, body?: unknown, apiKey?: string) {
   const response = await fetch(url, {
     method: "PATCH",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders(apiKey) },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || `PATCH ${url} failed`);
   return payload;
+}
+
+function authHeaders(apiKey?: string) {
+  return apiKey ? { "x-arcflow-api-key": apiKey } : {};
 }
 
 async function waitForHealth(url: string) {

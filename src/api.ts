@@ -1,10 +1,14 @@
-import type { ConfirmPaymentInput, CreateIntentInput, DashboardState, PaymentIntent, WebhookEndpoint } from "./shared/types";
+import type { ApiKey, ConfirmPaymentInput, CreateIntentInput, CreatedApiKey, DashboardState, PaymentIntent, WebhookEndpoint } from "./shared/types";
+
+const apiKeyStorageKey = "arcflow.apiKey";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const apiKey = getStoredApiKey();
   const response = await fetch(`/api${path}`, {
     ...options,
     headers: {
       "content-type": "application/json",
+      ...(apiKey ? { "x-arcflow-api-key": apiKey } : {}),
       ...options?.headers
     }
   });
@@ -22,6 +26,31 @@ export function getDashboardState() {
 
 export function getPaymentIntent(id: string) {
   return request<PaymentIntent>(`/payment-intents/${id}`);
+}
+
+export function getStoredApiKey() {
+  return window.localStorage.getItem(apiKeyStorageKey) || "";
+}
+
+export function saveStoredApiKey(apiKey: string) {
+  window.localStorage.setItem(apiKeyStorageKey, apiKey.trim());
+}
+
+export function clearStoredApiKey() {
+  window.localStorage.removeItem(apiKeyStorageKey);
+}
+
+export function createApiKey(name: string) {
+  return request<CreatedApiKey>("/api-keys", {
+    method: "POST",
+    body: JSON.stringify({ name })
+  });
+}
+
+export function revokeApiKey(id: string) {
+  return request<ApiKey>(`/api-keys/${id}`, {
+    method: "DELETE"
+  });
 }
 
 export function createPaymentIntent(input: CreateIntentInput) {
@@ -71,7 +100,11 @@ export function updateWebhook(id: string, input: Partial<Pick<WebhookEndpoint, "
 }
 
 export function deleteWebhook(id: string) {
-  return fetch(`/api/webhooks/${id}`, { method: "DELETE" }).then((response) => {
+  const apiKey = getStoredApiKey();
+  return fetch(`/api/webhooks/${id}`, {
+    method: "DELETE",
+    headers: apiKey ? { "x-arcflow-api-key": apiKey } : {}
+  }).then((response) => {
     if (!response.ok) throw new Error("Could not delete webhook endpoint.");
   });
 }

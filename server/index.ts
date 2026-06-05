@@ -8,6 +8,8 @@ import { validateIntentAddress, verifyArcUsdcTransfer } from "./arcVerifier";
 import {
   addLog,
   addWebhook,
+  countActiveApiKeys,
+  createApiKey,
   createPaymentIntent,
   createReceipt,
   DEMO_MERCHANT_WEBHOOK_URL,
@@ -22,9 +24,11 @@ import {
   initStore,
   markIntentPaid,
   resetDemoData,
+  revokeApiKey,
   rotateWebhookSecret,
   seedDemoIntent,
-  updateWebhook
+  updateWebhook,
+  verifyApiKey
 } from "./store";
 import { deliverWebhooks } from "./webhooks";
 
@@ -43,7 +47,7 @@ app.get("/api/state", (_request, response) => {
 });
 
 app.get("/api/payment-intents/:id", (request, response) => {
-  const intent = getPaymentIntent(request.params.id);
+  const intent = getPaymentIntent(routeParam(request, "id"));
   if (!intent) {
     response.status(404).json({ error: "Payment intent not found." });
     return;
@@ -51,7 +55,27 @@ app.get("/api/payment-intents/:id", (request, response) => {
   response.json(intent);
 });
 
-app.post("/api/payment-intents", (request, response) => {
+app.post("/api/api-keys", (request, response) => {
+  if (countActiveApiKeys() > 0 && !authenticateRequest(request)) {
+    response.status(401).json({ error: "A valid ArcFlow API key is required." });
+    return;
+  }
+
+  const body = request.body as { name?: string };
+  const apiKey = createApiKey(String(body.name || "Default key"));
+  response.status(201).json(apiKey);
+});
+
+app.delete("/api/api-keys/:id", requireApiKey, (request, response) => {
+  const revoked = revokeApiKey(routeParam(request, "id"));
+  if (!revoked) {
+    response.status(404).json({ error: "API key not found." });
+    return;
+  }
+  response.json(revoked);
+});
+
+app.post("/api/payment-intents", requireApiKey, (request, response) => {
   const body = request.body as CreateIntentInput;
 
   try {
@@ -72,8 +96,8 @@ app.post("/api/payment-intents", (request, response) => {
   }
 });
 
-app.post("/api/payment-intents/:id/confirm", async (request, response) => {
-  const intent = getPaymentIntent(request.params.id);
+app.post("/api/payment-intents/:id/confirm", requireApiKey, async (request, response) => {
+  const intent = getPaymentIntent(routeParam(request, "id"));
   if (!intent) {
     response.status(404).json({ error: "Payment intent not found." });
     return;
@@ -127,8 +151,8 @@ app.post("/api/payment-intents/:id/confirm", async (request, response) => {
   }
 });
 
-app.post("/api/payment-intents/:id/demo-settle", async (request, response) => {
-  const intent = getPaymentIntent(request.params.id);
+app.post("/api/payment-intents/:id/demo-settle", requireApiKey, async (request, response) => {
+  const intent = getPaymentIntent(routeParam(request, "id"));
   if (!intent) {
     response.status(404).json({ error: "Payment intent not found." });
     return;
@@ -168,7 +192,7 @@ app.post("/api/payment-intents/:id/demo-settle", async (request, response) => {
   response.json({ intent: paidIntent, receipt });
 });
 
-app.post("/api/webhooks", (request, response) => {
+app.post("/api/webhooks", requireApiKey, (request, response) => {
   try {
     const input = parseWebhookInput(request.body, false);
     const webhook = addWebhook(input);
@@ -178,10 +202,10 @@ app.post("/api/webhooks", (request, response) => {
   }
 });
 
-app.patch("/api/webhooks/:id", (request, response) => {
+app.patch("/api/webhooks/:id", requireApiKey, (request, response) => {
   try {
     const input = parseWebhookInput(request.body, true);
-    const webhook = updateWebhook(request.params.id, input);
+    const webhook = updateWebhook(routeParam(request, "id"), input);
     if (!webhook) {
       response.status(404).json({ error: "Webhook endpoint not found." });
       return;
@@ -192,8 +216,8 @@ app.patch("/api/webhooks/:id", (request, response) => {
   }
 });
 
-app.delete("/api/webhooks/:id", (request, response) => {
-  const deleted = deleteWebhook(request.params.id);
+app.delete("/api/webhooks/:id", requireApiKey, (request, response) => {
+  const deleted = deleteWebhook(routeParam(request, "id"));
   if (!deleted) {
     response.status(404).json({ error: "Webhook endpoint not found." });
     return;
@@ -201,8 +225,8 @@ app.delete("/api/webhooks/:id", (request, response) => {
   response.status(204).send();
 });
 
-app.post("/api/webhooks/:id/rotate-secret", (request, response) => {
-  const webhook = rotateWebhookSecret(request.params.id);
+app.post("/api/webhooks/:id/rotate-secret", requireApiKey, (request, response) => {
+  const webhook = rotateWebhookSecret(routeParam(request, "id"));
   if (!webhook) {
     response.status(404).json({ error: "Webhook endpoint not found." });
     return;
@@ -210,8 +234,8 @@ app.post("/api/webhooks/:id/rotate-secret", (request, response) => {
   response.json(webhook);
 });
 
-app.post("/api/webhooks/:id/test", async (request, response) => {
-  let webhook = getWebhook(request.params.id);
+app.post("/api/webhooks/:id/test", requireApiKey, async (request, response) => {
+  let webhook = getWebhook(routeParam(request, "id"));
   if (!webhook) {
     response.status(404).json({ error: "Webhook endpoint not found." });
     return;
@@ -238,8 +262,8 @@ app.post("/api/webhooks/:id/test", async (request, response) => {
   response.json(getState());
 });
 
-app.post("/api/webhook-deliveries/:id/retry", async (request, response) => {
-  const delivery = getWebhookDelivery(request.params.id);
+app.post("/api/webhook-deliveries/:id/retry", requireApiKey, async (request, response) => {
+  const delivery = getWebhookDelivery(routeParam(request, "id"));
   if (!delivery) {
     response.status(404).json({ error: "Webhook delivery not found." });
     return;
@@ -319,4 +343,23 @@ function parseWebhookInput(body: unknown, partial: boolean) {
   }
 
   return result;
+}
+
+function requireApiKey(request: express.Request, response: express.Response, next: express.NextFunction) {
+  if (authenticateRequest(request)) {
+    next();
+    return;
+  }
+  response.status(401).json({ error: "A valid ArcFlow API key is required." });
+}
+
+function authenticateRequest(request: express.Request) {
+  const header = request.headers["x-arcflow-api-key"];
+  const key = Array.isArray(header) ? header[0] : header;
+  return verifyApiKey(key);
+}
+
+function routeParam(request: express.Request, key: string) {
+  const value = request.params[key];
+  return Array.isArray(value) ? value[0] : value;
 }

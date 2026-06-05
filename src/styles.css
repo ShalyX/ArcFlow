@@ -517,6 +517,22 @@ tr:last-child td {
   gap: 14px;
 }
 
+.developer-config {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(320px, 0.9fr);
+  gap: 14px;
+}
+
+.developer-config .config-grid,
+.developer-config .api-key-list {
+  grid-column: 1 / -1;
+}
+
+.api-key-list {
+  display: grid;
+  gap: 10px;
+}
+
 .compact-panel {
   box-shadow: none;
 }
@@ -577,6 +593,10 @@ tr:last-child td {
   border: 1px dashed #c7c0b1;
   border-radius: 8px;
   padding: 10px 12px;
+}
+
+.key-secret {
+  grid-template-columns: 76px minmax(0, 1fr) auto;
 }
 
 .secret-line span,
