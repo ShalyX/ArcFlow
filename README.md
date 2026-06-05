@@ -1,6 +1,6 @@
 # ArcFlow
 
-[![CI](https://github.com/OWNER/arcflow/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/arcflow/actions/workflows/ci.yml)
+[![CI](https://github.com/ShalyX/ArcFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ShalyX/ArcFlow/actions/workflows/ci.yml)
 
 ArcFlow is the payment event layer for USDC apps on Arc.
 
