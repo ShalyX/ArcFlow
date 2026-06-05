@@ -1,5 +1,7 @@
 # ArcFlow
 
+[![CI](https://github.com/OWNER/arcflow/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/arcflow/actions/workflows/ci.yml)
+
 ArcFlow is the payment event layer for USDC apps on Arc.
 
 This first build focuses on the core product:
@@ -18,6 +20,31 @@ The product question is simple:
 > What happened after money moved?
 
 Later modules can extend the same surface with splits, subscriptions, agent spend controls, and credibility scoring.
+
+## Why ArcFlow?
+
+For a developer, payment is rarely the final step. After money moves, an app still needs to unlock access, issue proof, notify a backend, record a durable trail, and make the event inspectable.
+
+ArcFlow turns that into one local product loop:
+
+```txt
+checkout link -> wallet payment -> verified receipt -> signed webhook -> merchant unlock -> durable trail
+```
+
+## What It Is
+
+- A local-first Arc Testnet payment infrastructure MVP.
+- A developer tool for USDC payment intents and receipts.
+- A signed webhook layer for post-payment app workflows.
+- A demoable merchant unlock flow.
+- A regression-tested verifier for exact USDC transfer matching.
+
+## What It Is Not
+
+- Not a custodial wallet.
+- Not a mainnet payment processor yet.
+- Not a replacement for compliance, tax, or accounting systems.
+- Not production-authenticated yet.
 
 ## Product Structure
 
@@ -85,6 +112,12 @@ Add screenshots or GIFs here before publishing:
 - `docs/assets/checkout.png` - wallet checkout stepper.
 - `docs/assets/receipt.png` - verified receipt page.
 - `docs/assets/webhook-unlock.gif` - webhook delivered and merchant unlock.
+
+## Docs
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Security Notes](docs/SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## Developer SDK
 
@@ -303,3 +336,11 @@ Webhook payloads are signed with `x-arcflow-signature` using HMAC-SHA256.
 - Subscriptions: recurring intents, retries, and access status webhooks.
 - Agent spend controls: policy wallets, per-action caps, and spend logs.
 - Credibility: payment and fulfillment history as a reputation graph.
+
+## Current Limitations
+
+- Arc Testnet only.
+- Local SQLite only.
+- No API authentication yet.
+- No production deployment profile yet.
+- Webhook delivery history exists, but endpoint management and retry controls are still minimal.
