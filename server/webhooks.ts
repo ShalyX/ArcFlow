@@ -37,7 +37,8 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
             "content-type": "application/json",
             "x-arcflow-signature": signature
           },
-          body
+          body,
+          signal: AbortSignal.timeout(8000)
         });
         const responseBody = await response.text();
 
@@ -64,7 +65,7 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
           endpointUrl: webhook.url,
           status: "failed",
           attempt,
-          error: error instanceof Error ? error.message : "Webhook delivery failed.",
+          error: describeWebhookError(error, webhook.url),
           payload,
           signatureHeader: signature
         });
@@ -76,4 +77,21 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
       }
     })
   );
+}
+
+function describeWebhookError(error: unknown, endpointUrl: string) {
+  const message = error instanceof Error ? error.message : "Webhook delivery failed.";
+  const isLocalhost = endpointUrl.includes("127.0.0.1") || endpointUrl.includes("localhost");
+
+  if (message === "fetch failed") {
+    return isLocalhost
+      ? "Could not reach local webhook endpoint. Start the merchant demo with npm run dev:all or npm run example:merchant, then retry."
+      : "Could not reach webhook endpoint. Check that the URL is reachable from ArcFlow, then retry.";
+  }
+
+  if (error instanceof Error && error.name === "TimeoutError") {
+    return "Webhook endpoint timed out after 8 seconds.";
+  }
+
+  return message;
 }
