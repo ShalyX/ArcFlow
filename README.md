@@ -31,22 +31,59 @@ ArcFlow
 
 The SDK is intentionally product-scoped as `ArcFlow SDK`, avoiding the `ArcKit` name while Arc/Circle use nearby language like App Kits.
 
-## Local Setup
+## 5-Minute Quickstart
 
 ```bash
 npm install
-npm run dev
+npm run dev:all
+npm run demo:seed
 ```
 
-Open:
+Then:
+
+1. Open the ArcFlow Console.
+2. Copy the checkout link from **Payment Intents**.
+3. Open checkout.
+4. Connect a funded wallet on Arc Testnet.
+5. Pay USDC.
+6. View the receipt.
+7. Check **Webhook Events**.
+8. Check the **Merchant Unlock** panel.
+
+For a no-wallet local walkthrough, open checkout and use **Demo settle**.
+
+## Local Service Map
 
 ```txt
-http://127.0.0.1:5173
+Console:       http://127.0.0.1:5173
+ArcFlow API:   http://127.0.0.1:8787
+Merchant Demo: http://127.0.0.1:9090
+SQLite DB:     data/arcflow.sqlite
 ```
+
+## Local Commands
+
+```bash
+npm run dev:all      # API, console, merchant demo
+npm run demo:seed    # create a 10 USDC demo intent
+npm run demo:reset   # clear demo payment trail
+npm run build        # typecheck and production build
+```
+
+`npm run dev` starts only the ArcFlow API and console.
 
 ## Demo
 
 See [DEMO.md](./DEMO.md) for the two-minute demo script.
+
+## Screenshots
+
+Add screenshots or GIFs here before publishing:
+
+- `docs/assets/console.png` - dashboard with payment trail.
+- `docs/assets/checkout.png` - wallet checkout stepper.
+- `docs/assets/receipt.png` - verified receipt page.
+- `docs/assets/webhook-unlock.gif` - webhook delivered and merchant unlock.
 
 ## Developer SDK
 
@@ -121,7 +158,7 @@ The API runs on:
 http://127.0.0.1:8787
 ```
 
-Copy `.env.example` to `.env` if you want to override the Arc RPC URL or webhook signing secret.
+Copy `.env.example` to `.env` if you want to override local ports, the Arc RPC URL, API base URL, or webhook signing secret.
 
 Runtime data is stored in:
 
@@ -130,6 +167,36 @@ data/arcflow.sqlite
 ```
 
 The `data/` directory is ignored by git.
+
+## Troubleshooting
+
+**`127.0.0.1 refused to connect`**
+
+Run `npm run dev:all` again. The console should be on `5173`, the API on `8787`, and the merchant demo on `9090`.
+
+**Checkout cannot find a wallet**
+
+Install or enable an injected wallet such as MetaMask or Rabby, then refresh the checkout page.
+
+**Wallet cannot switch to Arc Testnet**
+
+The checkout asks your wallet to add/switch to Arc Testnet. If it fails, check that your wallet supports custom EVM networks.
+
+**Insufficient USDC**
+
+Fund the connected wallet with Arc Testnet USDC from the Circle faucet, then retry checkout.
+
+**Webhook says `Cannot GET /webhooks/arcflow`**
+
+Use the latest merchant demo. Browser visits use GET, while ArcFlow delivers webhooks with POST. The merchant demo now exposes a GET status route for that URL.
+
+**Demo seed fails**
+
+Make sure `npm run dev:all` is running before `npm run demo:seed`. The seed script calls `http://127.0.0.1:8787/api/demo/seed`.
+
+**Old demo data is confusing the dashboard**
+
+Run `npm run demo:reset`, then seed a fresh intent.
 
 ## Arc Defaults
 

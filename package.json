@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
+    "dev:all": "concurrently -n api,web,merchant -c blue,green,magenta \"tsx watch server/index.ts\" \"vite --host 127.0.0.1 --port 5173\" \"tsx watch examples/merchant-api/index.ts\"",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1",
     "api": "tsx watch server/index.ts",
-    "example:merchant": "tsx examples/merchant-api/index.ts"
+    "example:merchant": "tsx examples/merchant-api/index.ts",
+    "demo:seed": "node scripts/demo-seed.mjs",
+    "demo:reset": "node scripts/demo-reset.mjs"
   },
   "dependencies": {
     "@types/sql.js": "^1.4.11",
