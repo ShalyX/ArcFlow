@@ -75,9 +75,18 @@ Local API keys are generated as `ak_test_...` secrets. ArcFlow stores SHA-256 ha
 
 The first key can be created from the local console without an existing key so a fresh clone can bootstrap itself. Production deployments should replace that local bootstrap flow with an authenticated admin setup and project-scoped keys.
 
+API keys are scoped to projects. A key can only mutate and inspect the payment trail for its project. The local console stores project keys in browser local storage to support the project selector.
+
+## Project Boundaries
+
+Projects isolate payment intents, receipts, webhook endpoints, webhook delivery attempts, event logs, and API keys. Existing local data is backfilled into the default `Demo Merchant` project during migration.
+
+This is still local-first scoping. Production deployments should add organization membership, roles, audit logs for admin actions, and server-side session authentication before exposing project administration publicly.
+
 ## Current Limitations
 
 - Local-only SQLite database.
 - Testnet-only chain config.
 - Local-only API key bootstrap.
+- Local-only project administration.
 - No hosted deployment config yet.

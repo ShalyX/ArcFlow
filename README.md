@@ -17,6 +17,7 @@ This first build focuses on the core product:
 - SQLite persistence
 - Demo seed/reset controls
 - Local API key authentication
+- Project-scoped payment trails
 
 The product question is simple:
 
@@ -73,14 +74,15 @@ Then:
 
 1. Open the ArcFlow Console.
 2. Create an API key in **Developer Config**.
-3. Create or seed a payment intent.
-4. Copy the checkout link from **Payment Intents**.
-5. Open checkout.
-6. Connect a funded wallet on Arc Testnet.
-7. Pay USDC.
-8. View the receipt.
-9. Check **Webhook Events**.
-10. Check the **Merchant Unlock** panel.
+3. Use the default project or create another project from the top bar.
+4. Create or seed a payment intent.
+5. Copy the checkout link from **Payment Intents**.
+6. Open checkout.
+7. Connect a funded wallet on Arc Testnet.
+8. Pay USDC.
+9. View the receipt.
+10. Check **Webhook Events**.
+11. Check the **Merchant Unlock** panel.
 
 For a no-wallet local walkthrough, open checkout and use **Demo settle**.
 
@@ -345,6 +347,8 @@ x-arcflow-api-key: ak_test_...
 
 The first key can be created from the local console without an existing key. After that, key creation, payment mutations, webhook management, and retry routes require a valid key.
 
+API keys are scoped to projects. The console stores project keys in browser local storage so the project selector can switch between isolated payment trails. Each project has its own payment intents, receipts, webhook endpoints, webhook delivery attempts, flow logs, and API keys.
+
 Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, duplicate endpoint URLs, and endpoints with no selected events. Localhost endpoints are supported for the local demo; hosted deployments should require public HTTPS endpoints.
 
 ## Roadmap
@@ -362,3 +366,4 @@ Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, dup
 - Webhook endpoint management is local-only and does not include production authentication yet.
 - Webhook secrets are stored in local SQLite for the MVP; production deployments should move secrets to managed secret storage.
 - API keys are local MVP keys stored as SHA-256 hashes in SQLite; production deployments should add project scoping, stronger admin auth, and managed secret storage.
+- Project scoping is local-first and not yet backed by organization membership, user roles, or production admin auth.

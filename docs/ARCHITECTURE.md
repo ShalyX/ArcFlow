@@ -10,6 +10,7 @@ React + Vite app at `http://127.0.0.1:5173`.
 
 It provides:
 
+- Project switching and creation
 - Payment intent creation
 - Hosted checkout
 - Wallet checkout
@@ -32,6 +33,7 @@ It provides:
 - `GET /api/state`
 - `POST /api/api-keys`
 - `DELETE /api/api-keys/:id`
+- `POST /api/projects`
 - `POST /api/demo/seed`
 - `POST /api/demo/reset`
 - `POST /api/webhooks`
@@ -47,6 +49,7 @@ Runtime data is stored in `data/arcflow.sqlite`.
 
 Stored records:
 
+- Projects
 - Payment intents
 - Receipts
 - Webhook endpoints
@@ -84,6 +87,12 @@ Delivery attempts store the endpoint URL, event type, status, HTTP status, reque
 **API Key Auth**
 
 Protected mutation routes require the `x-arcflow-api-key` header. API keys are generated as `ak_test_...` secrets, stored as SHA-256 hashes, and shown only once in the console. The first key can bootstrap from the local console without an existing key; later key creation and protected mutations require an active key.
+
+API keys are scoped to one project. Authenticated dashboard state and protected mutations operate inside the API key's project.
+
+**Project Scoping**
+
+ArcFlow seeds a default `Demo Merchant` project on boot and backfills legacy local data into that project. Payment intents, receipts, webhook endpoints, webhook delivery attempts, event logs, and API keys all carry a `project_id`. Webhook delivery only reads endpoints from the event's project, so merchant trails stay isolated.
 
 **Merchant Demo**
 

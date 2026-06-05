@@ -1,18 +1,19 @@
 import crypto from "node:crypto";
 import type { WebhookEndpoint } from "../src/shared/types";
-import { addLog, addWebhookDelivery, getState } from "./store";
+import { DEFAULT_PROJECT_ID, addLog, addWebhookDelivery, getState } from "./store";
 
 type WebhookPayload = {
   type: string;
   data: Record<string, unknown>;
 };
 
-export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: WebhookEndpoint[], attempt = 1) {
+export async function deliverWebhooks(payload: WebhookPayload, projectId = DEFAULT_PROJECT_ID, targetHooks?: WebhookEndpoint[], attempt = 1) {
   const body = JSON.stringify(payload);
-  const enabledHooks = targetHooks || getState().webhooks.filter((webhook) => webhook.enabled && webhook.events.includes(payload.type));
+  const enabledHooks = targetHooks || getState(projectId).webhooks.filter((webhook) => webhook.enabled && webhook.events.includes(payload.type));
 
   if (enabledHooks.length === 0) {
     addWebhookDelivery({
+      projectId,
       eventType: payload.type,
       status: "skipped",
       attempt: 1,
@@ -21,6 +22,7 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
     });
     addLog({
       level: "info",
+      projectId,
       type: "webhook.skipped",
       message: `No enabled webhook endpoints for ${payload.type}.`
     });
@@ -44,10 +46,12 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
 
         addLog({
           level: response.ok ? "success" : "warning",
+          projectId,
           type: response.ok ? "webhook.delivered" : "webhook.failed",
           message: `${payload.type} delivered to ${webhook.url} with HTTP ${response.status}.`
         });
         addWebhookDelivery({
+          projectId: webhook.projectId,
           webhookId: webhook.id,
           eventType: payload.type,
           endpointUrl: webhook.url,
@@ -60,6 +64,7 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
         });
       } catch (error) {
         addWebhookDelivery({
+          projectId: webhook.projectId,
           webhookId: webhook.id,
           eventType: payload.type,
           endpointUrl: webhook.url,
@@ -71,6 +76,7 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
         });
         addLog({
           level: "error",
+          projectId,
           type: "webhook.failed",
           message: `${payload.type} failed for ${webhook.url}.`
         });

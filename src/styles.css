@@ -136,6 +136,42 @@ td small {
   gap: 20px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.project-switcher {
+  display: grid;
+  gap: 6px;
+  min-width: 300px;
+}
+
+.project-switcher label,
+.project-switcher form {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.project-switcher form {
+  grid-template-columns: minmax(0, 1fr) 34px;
+}
+
+.project-switcher select,
+.project-switcher input {
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
+.project-switcher small {
+  color: var(--red);
+  font-size: 12px;
+}
+
 .topbar h1 {
   margin: 4px 0 0;
   font-size: 36px;

@@ -3,6 +3,7 @@ export type LogLevel = "info" | "success" | "warning" | "error";
 
 export type PaymentIntent = {
   id: string;
+  projectId: string;
   amount: string;
   receiver: `0x${string}`;
   status: PaymentIntentStatus;
@@ -18,6 +19,7 @@ export type PaymentIntent = {
 
 export type Receipt = {
   id: string;
+  projectId: string;
   paymentIntentId: string;
   amount: string;
   receiver: `0x${string}`;
@@ -31,6 +33,7 @@ export type Receipt = {
 
 export type WebhookEndpoint = {
   id: string;
+  projectId: string;
   url: string;
   events: string[];
   enabled: boolean;
@@ -41,6 +44,7 @@ export type WebhookEndpoint = {
 
 export type WebhookDelivery = {
   id: string;
+  projectId?: string;
   webhookId?: string;
   eventType: string;
   endpointUrl?: string;
@@ -56,6 +60,7 @@ export type WebhookDelivery = {
 
 export type EventLog = {
   id: string;
+  projectId?: string;
   level: LogLevel;
   type: string;
   message: string;
@@ -66,6 +71,7 @@ export type EventLog = {
 
 export type ApiKey = {
   id: string;
+  projectId: string;
   name: string;
   keyPreview: string;
   enabled: boolean;
@@ -78,9 +84,23 @@ export type CreatedApiKey = ApiKey & {
   key: string;
 };
 
+export type Project = {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+};
+
+export type CreatedProject = {
+  project: Project;
+  apiKey: CreatedApiKey;
+};
+
 export type TemplateKey = "payment-link" | "access-unlock" | "invoice";
 
 export type DashboardState = {
+  currentProjectId: string;
+  projects: Project[];
   paymentIntents: PaymentIntent[];
   receipts: Receipt[];
   webhooks: WebhookEndpoint[];

@@ -243,6 +243,29 @@ describe("payment intent API guards", () => {
     }, temporary.key);
     assert.equal(rejected.status, 401);
   });
+
+  it("scopes payment trails to the API key project", async () => {
+    const createdProject = await post(`${apiBase}/projects`, { name: "Second Merchant" }, apiKey);
+    assert.equal(createdProject.project.name, "Second Merchant");
+    assert.equal(createdProject.apiKey.projectId, createdProject.project.id);
+
+    const projectIntent = await post(`${apiBase}/payment-intents`, {
+      amount: "5.00",
+      receiver,
+      description: "Project scoped checkout",
+      template: "payment-link"
+    }, createdProject.apiKey.key);
+    assert.equal(projectIntent.projectId, createdProject.project.id);
+
+    const secondProjectState = await get(`${apiBase}/state`, createdProject.apiKey.key);
+    assert.equal(secondProjectState.currentProjectId, createdProject.project.id);
+    assert.ok(secondProjectState.paymentIntents.some((intent: { id: string }) => intent.id === projectIntent.id));
+    assert.ok(secondProjectState.webhooks.every((webhook: { projectId: string }) => webhook.projectId === createdProject.project.id));
+
+    const defaultState = await get(`${apiBase}/state`, apiKey);
+    assert.equal(defaultState.currentProjectId, "proj_default");
+    assert.ok(!defaultState.paymentIntents.some((intent: { id: string }) => intent.id === projectIntent.id));
+  });
 });
 
 async function post(url: string, body?: unknown, apiKey?: string) {
@@ -276,6 +299,15 @@ async function patch(url: string, body?: unknown, apiKey?: string) {
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || `PATCH ${url} failed`);
+  return payload;
+}
+
+async function get(url: string, apiKey?: string) {
+  const response = await fetch(url, {
+    headers: authHeaders(apiKey)
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || `GET ${url} failed`);
   return payload;
 }
 

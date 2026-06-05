@@ -11,7 +11,9 @@ import {
   countActiveApiKeys,
   createApiKey,
   createPaymentIntent,
+  createProject,
   createReceipt,
+  DEFAULT_PROJECT_ID,
   DEMO_MERCHANT_WEBHOOK_URL,
   deleteWebhook,
   ensureDemoMerchantWebhook,
@@ -42,8 +44,8 @@ app.get("/api/health", (_request, response) => {
   response.json({ ok: true, product: "ArcFlow", network: "Arc Testnet" });
 });
 
-app.get("/api/state", (_request, response) => {
-  response.json(getState());
+app.get("/api/state", (request, response) => {
+  response.json(getState(currentProjectId(request, response)));
 });
 
 app.get("/api/payment-intents/:id", (request, response) => {
@@ -56,13 +58,14 @@ app.get("/api/payment-intents/:id", (request, response) => {
 });
 
 app.post("/api/api-keys", (request, response) => {
-  if (countActiveApiKeys() > 0 && !authenticateRequest(request)) {
+  const existingKey = authenticateRequest(request);
+  if (countActiveApiKeys() > 0 && !existingKey) {
     response.status(401).json({ error: "A valid ArcFlow API key is required." });
     return;
   }
 
   const body = request.body as { name?: string };
-  const apiKey = createApiKey(String(body.name || "Default key"));
+  const apiKey = createApiKey(String(body.name || "Default key"), existingKey?.projectId || DEFAULT_PROJECT_ID);
   response.status(201).json(apiKey);
 });
 
@@ -75,14 +78,30 @@ app.delete("/api/api-keys/:id", requireApiKey, (request, response) => {
   response.json(revoked);
 });
 
+app.post("/api/projects", (request, response) => {
+  const existingKey = authenticateRequest(request);
+  if (countActiveApiKeys() > 0 && !existingKey) {
+    response.status(401).json({ error: "A valid ArcFlow API key is required." });
+    return;
+  }
+
+  const body = request.body as { name?: string };
+  const project = createProject(String(body.name || "Untitled project"));
+  ensureDemoMerchantWebhook(project.id);
+  const apiKey = createApiKey(`${project.name} console key`, project.id);
+  response.status(201).json({ project, apiKey });
+});
+
 app.post("/api/payment-intents", requireApiKey, (request, response) => {
   const body = request.body as CreateIntentInput;
+  const projectId = currentProjectId(request, response);
 
   try {
     if (!body.description?.trim()) throw new Error("Description is required.");
     if (!validateIntentAddress(body.receiver)) throw new Error("Receiver must be a valid Arc EVM address.");
 
     const intent = createPaymentIntent({
+      projectId,
       amount: parseUsdc(body.amount),
       receiver: body.receiver,
       description: body.description.trim(),
@@ -106,6 +125,10 @@ app.post("/api/payment-intents/:id/confirm", requireApiKey, async (request, resp
     response.status(409).json({ error: "Payment intent is already paid." });
     return;
   }
+  if (intent.projectId !== currentProjectId(request, response)) {
+    response.status(404).json({ error: "Payment intent not found for this project." });
+    return;
+  }
 
   const body = request.body as ConfirmPaymentInput;
   if (!body.txHash?.startsWith("0x")) {
@@ -121,6 +144,7 @@ app.post("/api/payment-intents/:id/confirm", requireApiKey, async (request, resp
     const verified = await verifyArcUsdcTransfer(intent, body.txHash);
     const receipt = createReceipt({
       paymentIntentId: intent.id,
+      projectId: intent.projectId,
       amount: intent.amount,
       receiver: intent.receiver,
       payer: verified.payer,
@@ -138,11 +162,12 @@ app.post("/api/payment-intents/:id/confirm", requireApiKey, async (request, resp
         receiptUrl: receipt.receiptUrl,
         ...intent.metadata
       }
-    });
+    }, intent.projectId);
     response.json({ intent: paidIntent, receipt });
   } catch (error) {
     addLog({
       level: "error",
+      projectId: intent.projectId,
       type: "payment_intent.verify_failed",
       message: error instanceof Error ? error.message : "Payment verification failed.",
       paymentIntentId: intent.id
@@ -161,8 +186,13 @@ app.post("/api/payment-intents/:id/demo-settle", requireApiKey, async (request, 
     response.status(409).json({ error: "Payment intent is already paid." });
     return;
   }
+  if (intent.projectId !== currentProjectId(request, response)) {
+    response.status(404).json({ error: "Payment intent not found for this project." });
+    return;
+  }
 
   const receipt = createReceipt({
+    projectId: intent.projectId,
     paymentIntentId: intent.id,
     amount: intent.amount,
     receiver: intent.receiver,
@@ -174,6 +204,7 @@ app.post("/api/payment-intents/:id/demo-settle", requireApiKey, async (request, 
   const paidIntent = getPaymentIntent(intent.id) || intent;
   addLog({
     level: "success",
+    projectId: intent.projectId,
     type: "payment_intent.demo_settled",
     message: "Demo settlement completed without submitting an onchain transaction.",
     paymentIntentId: intent.id,
@@ -183,19 +214,20 @@ app.post("/api/payment-intents/:id/demo-settle", requireApiKey, async (request, 
     type: "payment_intent.paid",
       data: {
         paymentIntentId: intent.id,
+        projectId: intent.projectId,
         amount: intent.amount,
         txHash: receipt.txHash,
         receiptUrl: receipt.receiptUrl,
         ...intent.metadata
       }
-  });
+  }, intent.projectId);
   response.json({ intent: paidIntent, receipt });
 });
 
 app.post("/api/webhooks", requireApiKey, (request, response) => {
   try {
     const input = parseWebhookInput(request.body, false);
-    const webhook = addWebhook(input);
+    const webhook = addWebhook({ ...input, projectId: currentProjectId(request, response) });
     response.status(201).json(webhook);
   } catch (error) {
     response.status(400).json({ error: error instanceof Error ? error.message : "Invalid webhook endpoint." });
@@ -204,6 +236,11 @@ app.post("/api/webhooks", requireApiKey, (request, response) => {
 
 app.patch("/api/webhooks/:id", requireApiKey, (request, response) => {
   try {
+    const existing = getWebhook(routeParam(request, "id"));
+    if (!existing || existing.projectId !== currentProjectId(request, response)) {
+      response.status(404).json({ error: "Webhook endpoint not found." });
+      return;
+    }
     const input = parseWebhookInput(request.body, true);
     const webhook = updateWebhook(routeParam(request, "id"), input);
     if (!webhook) {
@@ -217,6 +254,11 @@ app.patch("/api/webhooks/:id", requireApiKey, (request, response) => {
 });
 
 app.delete("/api/webhooks/:id", requireApiKey, (request, response) => {
+  const existing = getWebhook(routeParam(request, "id"));
+  if (!existing || existing.projectId !== currentProjectId(request, response)) {
+    response.status(404).json({ error: "Webhook endpoint not found." });
+    return;
+  }
   const deleted = deleteWebhook(routeParam(request, "id"));
   if (!deleted) {
     response.status(404).json({ error: "Webhook endpoint not found." });
@@ -226,22 +268,23 @@ app.delete("/api/webhooks/:id", requireApiKey, (request, response) => {
 });
 
 app.post("/api/webhooks/:id/rotate-secret", requireApiKey, (request, response) => {
-  const webhook = rotateWebhookSecret(routeParam(request, "id"));
-  if (!webhook) {
+  const existing = getWebhook(routeParam(request, "id"));
+  if (!existing || existing.projectId !== currentProjectId(request, response)) {
     response.status(404).json({ error: "Webhook endpoint not found." });
     return;
   }
+  const webhook = rotateWebhookSecret(routeParam(request, "id"));
   response.json(webhook);
 });
 
 app.post("/api/webhooks/:id/test", requireApiKey, async (request, response) => {
   let webhook = getWebhook(routeParam(request, "id"));
-  if (!webhook) {
+  if (!webhook || webhook.projectId !== currentProjectId(request, response)) {
     response.status(404).json({ error: "Webhook endpoint not found." });
     return;
   }
   if (webhook.url === DEMO_MERCHANT_WEBHOOK_URL) {
-    webhook = ensureDemoMerchantWebhook();
+    webhook = ensureDemoMerchantWebhook(webhook.projectId);
   }
 
   await deliverWebhooks(
@@ -257,14 +300,15 @@ app.post("/api/webhooks/:id/test", requireApiKey, async (request, response) => {
         test: true
       }
     },
+    webhook.projectId,
     [{ ...webhook, enabled: true, events: ["payment_intent.paid"] }]
   );
-  response.json(getState());
+  response.json(getState(webhook.projectId));
 });
 
 app.post("/api/webhook-deliveries/:id/retry", requireApiKey, async (request, response) => {
   const delivery = getWebhookDelivery(routeParam(request, "id"));
-  if (!delivery) {
+  if (!delivery || delivery.projectId !== currentProjectId(request, response)) {
     response.status(404).json({ error: "Webhook delivery not found." });
     return;
   }
@@ -279,7 +323,7 @@ app.post("/api/webhook-deliveries/:id/retry", requireApiKey, async (request, res
     return;
   }
   if (delivery.endpointUrl === DEMO_MERCHANT_WEBHOOK_URL) {
-    webhook = ensureDemoMerchantWebhook();
+    webhook = ensureDemoMerchantWebhook(webhook.projectId);
   }
 
   await deliverWebhooks(
@@ -287,20 +331,22 @@ app.post("/api/webhook-deliveries/:id/retry", requireApiKey, async (request, res
       type: delivery.eventType,
       data: (delivery.payload?.data as Record<string, unknown> | undefined) || { retry: true }
     },
+    webhook.projectId,
     [{ ...webhook, enabled: true, events: [delivery.eventType] }],
     delivery.attempt + 1
   );
-  response.json(getState());
+  response.json(getState(webhook.projectId));
 });
 
 app.post("/api/demo/seed", (request, response) => {
-  const intent = seedDemoIntent();
+  const intent = seedDemoIntent(currentProjectId(request, response));
   response.status(201).json(intent);
 });
 
 app.post("/api/demo/reset", (request, response) => {
-  resetDemoData();
-  response.json(getState());
+  const projectId = currentProjectId(request, response);
+  resetDemoData(projectId);
+  response.json(getState(projectId));
 });
 
 initStore().then(() => {
@@ -346,7 +392,9 @@ function parseWebhookInput(body: unknown, partial: boolean) {
 }
 
 function requireApiKey(request: express.Request, response: express.Response, next: express.NextFunction) {
-  if (authenticateRequest(request)) {
+  const apiKey = authenticateRequest(request);
+  if (apiKey) {
+    response.locals.apiKey = apiKey;
     next();
     return;
   }
@@ -357,6 +405,11 @@ function authenticateRequest(request: express.Request) {
   const header = request.headers["x-arcflow-api-key"];
   const key = Array.isArray(header) ? header[0] : header;
   return verifyApiKey(key);
+}
+
+function currentProjectId(request: express.Request, response: express.Response) {
+  const localKey = response.locals.apiKey as ReturnType<typeof verifyApiKey> | undefined;
+  return localKey?.projectId || authenticateRequest(request)?.projectId || DEFAULT_PROJECT_ID;
 }
 
 function routeParam(request: express.Request, key: string) {

@@ -30,11 +30,13 @@ import {
   clearStoredApiKey,
   createApiKey,
   createPaymentIntent,
+  createProject,
   createWebhook,
   deleteWebhook,
   demoSettlePayment,
   getDashboardState,
   getPaymentIntent,
+  getStoredProjectKeys,
   getStoredApiKey,
   resetDemoData,
   revokeApiKey,
@@ -42,6 +44,7 @@ import {
   rotateWebhookSecret,
   seedDemoIntent,
   saveStoredApiKey,
+  saveProjectApiKey,
   testWebhook,
   updateWebhook
 } from "./api";
@@ -64,6 +67,8 @@ const roadmap = [
 ];
 
 const initialState: DashboardState = {
+  currentProjectId: "proj_default",
+  projects: [],
   paymentIntents: [],
   receipts: [],
   webhooks: [],
@@ -177,9 +182,12 @@ function Dashboard({
             <p>What happened after money moved?</p>
             <h1>ArcFlow Console</h1>
           </div>
-          <button className="icon-button" onClick={onRefresh} aria-label="Refresh dashboard" title="Refresh dashboard">
-            {loading ? <Loader2 className="spin" size={18} /> : <Activity size={18} />}
-          </button>
+          <div className="topbar-actions">
+            <ProjectSwitcher state={state} onRefresh={onRefresh} />
+            <button className="icon-button" onClick={onRefresh} aria-label="Refresh dashboard" title="Refresh dashboard">
+              {loading ? <Loader2 className="spin" size={18} /> : <Activity size={18} />}
+            </button>
+          </div>
         </header>
 
         <section className="metrics" aria-label="Overview">
@@ -310,6 +318,60 @@ function Dashboard({
 
 const supportedWebhookEvents = ["payment_intent.paid", "receipt.issued"];
 const demoMerchantWebhookUrl = "http://127.0.0.1:9090/webhooks/arcflow";
+
+function ProjectSwitcher({ state, onRefresh }: { state: DashboardState; onRefresh: () => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const currentProject = state.projects.find((project) => project.id === state.currentProjectId);
+
+  async function switchProject(projectId: string) {
+    setError("");
+    const key = getStoredProjectKeys()[projectId];
+    if (!key) {
+      setError("No browser key saved for that project.");
+      return;
+    }
+    saveStoredApiKey(key);
+    await onRefresh();
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const result = await createProject(name || "New project");
+      saveProjectApiKey(result.project.id, result.apiKey.key);
+      setName("");
+      await onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create project.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="project-switcher">
+      <label>
+        Project
+        <select value={state.currentProjectId} onChange={(event) => switchProject(event.target.value)}>
+          {state.projects.map((project) => (
+            <option key={project.id} value={project.id}>{project.name}</option>
+          ))}
+        </select>
+      </label>
+      <form onSubmit={submit}>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder={currentProject ? `New project from ${currentProject.name}` : "New project"} />
+        <button className="icon-button compact" disabled={busy} aria-label="Create project" title="Create project">
+          {busy ? <Loader2 className="spin" size={16} /> : <Plus size={16} />}
+        </button>
+      </form>
+      {error && <small>{error}</small>}
+    </div>
+  );
+}
 
 function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndpoint[]; onRefresh: () => Promise<void> }) {
   const [url, setUrl] = useState("http://127.0.0.1:9090/webhooks/arcflow");
@@ -601,7 +663,7 @@ function DeveloperConfig({ apiKeys, onRefresh }: { apiKeys: DashboardState["apiK
     setError("");
     try {
       const apiKey = await createApiKey(name);
-      saveStoredApiKey(apiKey.key);
+      saveProjectApiKey(apiKey.projectId, apiKey.key);
       setManualKey(apiKey.key);
       setCreatedKey(apiKey.key);
       await onRefresh();

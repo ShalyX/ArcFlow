@@ -1,6 +1,7 @@
-import type { ApiKey, ConfirmPaymentInput, CreateIntentInput, CreatedApiKey, DashboardState, PaymentIntent, WebhookEndpoint } from "./shared/types";
+import type { ApiKey, ConfirmPaymentInput, CreateIntentInput, CreatedApiKey, CreatedProject, DashboardState, PaymentIntent, WebhookEndpoint } from "./shared/types";
 
 const apiKeyStorageKey = "arcflow.apiKey";
+const projectKeyStorageKey = "arcflow.projectKeys";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const apiKey = getStoredApiKey();
@@ -40,8 +41,30 @@ export function clearStoredApiKey() {
   window.localStorage.removeItem(apiKeyStorageKey);
 }
 
+export function getStoredProjectKeys() {
+  try {
+    return JSON.parse(window.localStorage.getItem(projectKeyStorageKey) || "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+export function saveProjectApiKey(projectId: string, apiKey: string) {
+  const keys = getStoredProjectKeys();
+  keys[projectId] = apiKey;
+  window.localStorage.setItem(projectKeyStorageKey, JSON.stringify(keys));
+  saveStoredApiKey(apiKey);
+}
+
 export function createApiKey(name: string) {
   return request<CreatedApiKey>("/api-keys", {
+    method: "POST",
+    body: JSON.stringify({ name })
+  });
+}
+
+export function createProject(name: string) {
+  return request<CreatedProject>("/projects", {
     method: "POST",
     body: JSON.stringify({ name })
   });

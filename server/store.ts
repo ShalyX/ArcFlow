@@ -2,13 +2,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import initSqlJs, { type Database, type SqlValue } from "sql.js";
-import type { ApiKey, DashboardState, EventLog, PaymentIntent, Receipt, WebhookDelivery, WebhookEndpoint } from "../src/shared/types";
+import type { ApiKey, DashboardState, EventLog, PaymentIntent, Project, Receipt, WebhookDelivery, WebhookEndpoint } from "../src/shared/types";
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
 const dataDir = path.resolve("data");
 const dbPath = process.env.ARCFLOW_DB_PATH ? path.resolve(process.env.ARCFLOW_DB_PATH) : path.join(dataDir, "arcflow.sqlite");
 export const DEMO_MERCHANT_WEBHOOK_URL = "http://127.0.0.1:9090/webhooks/arcflow";
+export const DEFAULT_PROJECT_ID = "proj_default";
 
 let db: Database;
 
@@ -19,6 +20,8 @@ export async function initStore() {
   const SQL = await initSqlJs();
   db = existsSync(dbPath) ? new SQL.Database(readFileSync(dbPath)) : new SQL.Database();
   migrate();
+  seedDefaultProject();
+  backfillProjectIds();
   seedDefaultWebhook();
   ensureDemoMerchantWebhook();
   persist();
@@ -28,6 +31,7 @@ function migrate() {
   db.run(`
     CREATE TABLE IF NOT EXISTS payment_intents (
       id TEXT PRIMARY KEY,
+      project_id TEXT,
       amount TEXT NOT NULL,
       receiver TEXT NOT NULL,
       status TEXT NOT NULL,
@@ -43,6 +47,7 @@ function migrate() {
 
     CREATE TABLE IF NOT EXISTS receipts (
       id TEXT PRIMARY KEY,
+      project_id TEXT,
       payment_intent_id TEXT NOT NULL,
       amount TEXT NOT NULL,
       receiver TEXT NOT NULL,
@@ -59,6 +64,7 @@ function migrate() {
 
     CREATE TABLE IF NOT EXISTS webhooks (
       id TEXT PRIMARY KEY,
+      project_id TEXT,
       url TEXT NOT NULL,
       events TEXT NOT NULL,
       enabled INTEGER NOT NULL,
@@ -69,6 +75,7 @@ function migrate() {
 
     CREATE TABLE IF NOT EXISTS webhook_deliveries (
       id TEXT PRIMARY KEY,
+      project_id TEXT,
       webhook_id TEXT,
       event_type TEXT NOT NULL,
       endpoint_url TEXT,
@@ -84,6 +91,7 @@ function migrate() {
 
     CREATE TABLE IF NOT EXISTS event_logs (
       id TEXT PRIMARY KEY,
+      project_id TEXT,
       level TEXT NOT NULL,
       type TEXT NOT NULL,
       message TEXT NOT NULL,
@@ -94,6 +102,7 @@ function migrate() {
 
     CREATE TABLE IF NOT EXISTS api_keys (
       id TEXT PRIMARY KEY,
+      project_id TEXT,
       name TEXT NOT NULL,
       key_hash TEXT NOT NULL UNIQUE,
       key_preview TEXT NOT NULL,
@@ -102,7 +111,20 @@ function migrate() {
       last_used_at TEXT,
       revoked_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    );
   `);
+  addColumnIfMissing("payment_intents", "project_id", "TEXT");
+  addColumnIfMissing("receipts", "project_id", "TEXT");
+  addColumnIfMissing("webhooks", "project_id", "TEXT");
+  addColumnIfMissing("webhook_deliveries", "project_id", "TEXT");
+  addColumnIfMissing("event_logs", "project_id", "TEXT");
+  addColumnIfMissing("api_keys", "project_id", "TEXT");
   addColumnIfMissing("webhook_deliveries", "payload", "TEXT");
   addColumnIfMissing("webhook_deliveries", "response_body", "TEXT");
   addColumnIfMissing("webhook_deliveries", "signature_header", "TEXT");
@@ -115,6 +137,30 @@ function addColumnIfMissing(table: string, column: string, definition: string) {
   const columns = db.exec(`PRAGMA table_info(${table})`)[0]?.values.map((value) => String(value[1])) || [];
   if (!columns.includes(column)) {
     db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+function seedDefaultProject() {
+  const existing = getProject(DEFAULT_PROJECT_ID);
+  if (existing) return existing;
+  const project: Project = {
+    id: DEFAULT_PROJECT_ID,
+    name: "Demo Merchant",
+    slug: "demo-merchant",
+    createdAt: now()
+  };
+  db.run("INSERT INTO projects (id, name, slug, created_at) VALUES (?, ?, ?, ?)", [
+    project.id,
+    project.name,
+    project.slug,
+    project.createdAt
+  ]);
+  return project;
+}
+
+function backfillProjectIds() {
+  for (const table of ["payment_intents", "receipts", "webhooks", "webhook_deliveries", "event_logs", "api_keys"]) {
+    db.run(`UPDATE ${table} SET project_id = ? WHERE project_id IS NULL OR project_id = ''`, [DEFAULT_PROJECT_ID]);
   }
 }
 
@@ -162,6 +208,7 @@ const asOptionalText = (value: unknown) => (value ? String(value) : undefined);
 function mapIntent(row: Row): PaymentIntent {
   return {
     id: asText(row.id),
+    projectId: asText(row.project_id) || DEFAULT_PROJECT_ID,
     amount: asText(row.amount),
     receiver: asText(row.receiver) as `0x${string}`,
     status: asText(row.status) as PaymentIntent["status"],
@@ -179,6 +226,7 @@ function mapIntent(row: Row): PaymentIntent {
 function mapReceipt(row: Row): Receipt {
   return {
     id: asText(row.id),
+    projectId: asText(row.project_id) || DEFAULT_PROJECT_ID,
     paymentIntentId: asText(row.payment_intent_id),
     amount: asText(row.amount),
     receiver: asText(row.receiver) as `0x${string}`,
@@ -195,6 +243,7 @@ function mapWebhook(row: Row): WebhookEndpoint {
   const createdAt = asText(row.created_at);
   return {
     id: asText(row.id),
+    projectId: asText(row.project_id) || DEFAULT_PROJECT_ID,
     url: asText(row.url),
     events: parseJson<string[]>(row.events, []),
     enabled: Boolean(row.enabled),
@@ -207,6 +256,7 @@ function mapWebhook(row: Row): WebhookEndpoint {
 function mapDelivery(row: Row): WebhookDelivery {
   return {
     id: asText(row.id),
+    projectId: asOptionalText(row.project_id),
     webhookId: asOptionalText(row.webhook_id),
     eventType: asText(row.event_type),
     endpointUrl: asOptionalText(row.endpoint_url),
@@ -235,6 +285,7 @@ function backfillWebhookSecrets() {
 function mapLog(row: Row): EventLog {
   return {
     id: asText(row.id),
+    projectId: asOptionalText(row.project_id),
     level: asText(row.level) as EventLog["level"],
     type: asText(row.type),
     message: asText(row.message),
@@ -247,6 +298,7 @@ function mapLog(row: Row): EventLog {
 function mapApiKey(row: Row): ApiKey {
   return {
     id: asText(row.id),
+    projectId: asText(row.project_id) || DEFAULT_PROJECT_ID,
     name: asText(row.name),
     keyPreview: asText(row.key_preview),
     enabled: Boolean(row.enabled),
@@ -256,41 +308,90 @@ function mapApiKey(row: Row): ApiKey {
   };
 }
 
-export function getState(): DashboardState {
+function mapProject(row: Row): Project {
   return {
-    paymentIntents: all("SELECT * FROM payment_intents ORDER BY created_at DESC", [], mapIntent),
-    receipts: all("SELECT * FROM receipts ORDER BY issued_at DESC", [], mapReceipt),
-    webhooks: all("SELECT * FROM webhooks ORDER BY created_at DESC", [], mapWebhook),
-    webhookDeliveries: all("SELECT * FROM webhook_deliveries ORDER BY created_at DESC", [], mapDelivery),
-    apiKeys: listApiKeys(),
-    logs: all("SELECT * FROM event_logs ORDER BY created_at DESC", [], mapLog)
+    id: asText(row.id),
+    name: asText(row.name),
+    slug: asText(row.slug),
+    createdAt: asText(row.created_at)
   };
 }
 
-export function listApiKeys() {
-  return all("SELECT * FROM api_keys ORDER BY created_at DESC", [], mapApiKey);
+export function getState(projectId = DEFAULT_PROJECT_ID): DashboardState {
+  return {
+    currentProjectId: projectId,
+    projects: listProjects(),
+    paymentIntents: all("SELECT * FROM payment_intents WHERE project_id = ? ORDER BY created_at DESC", [projectId], mapIntent),
+    receipts: all("SELECT * FROM receipts WHERE project_id = ? ORDER BY issued_at DESC", [projectId], mapReceipt),
+    webhooks: all("SELECT * FROM webhooks WHERE project_id = ? ORDER BY created_at DESC", [projectId], mapWebhook),
+    webhookDeliveries: all("SELECT * FROM webhook_deliveries WHERE project_id = ? ORDER BY created_at DESC", [projectId], mapDelivery),
+    apiKeys: listApiKeys(projectId),
+    logs: all("SELECT * FROM event_logs WHERE project_id = ? ORDER BY created_at DESC", [projectId], mapLog)
+  };
+}
+
+export function listProjects() {
+  return all("SELECT * FROM projects ORDER BY created_at DESC", [], mapProject);
+}
+
+export function getProject(projectId: string) {
+  return getOne("SELECT * FROM projects WHERE id = ?", [projectId], mapProject);
+}
+
+export function listApiKeys(projectId = DEFAULT_PROJECT_ID) {
+  return all("SELECT * FROM api_keys WHERE project_id = ? ORDER BY created_at DESC", [projectId], mapApiKey);
 }
 
 export function countActiveApiKeys() {
   return Number(db.exec("SELECT COUNT(*) AS count FROM api_keys WHERE enabled = 1 AND revoked_at IS NULL")[0]?.values[0]?.[0] || 0);
 }
 
-export function createApiKey(name: string) {
+export function createProject(name: string) {
+  const projectName = name.trim() || "Untitled project";
+  const createdAt = now();
+  const project: Project = {
+    id: id("proj"),
+    name: projectName,
+    slug: createProjectSlug(projectName),
+    createdAt
+  };
+  db.run("INSERT INTO projects (id, name, slug, created_at) VALUES (?, ?, ?, ?)", [
+    project.id,
+    project.name,
+    project.slug,
+    project.createdAt
+  ]);
+  addLog(
+    {
+      projectId: project.id,
+      level: "success",
+      type: "project.created",
+      message: `Created project ${project.name}.`
+    },
+    false
+  );
+  persist();
+  return project;
+}
+
+export function createApiKey(name: string, projectId = DEFAULT_PROJECT_ID) {
   const createdAt = now();
   const key = createApiKeySecret();
   const apiKey: ApiKey = {
     id: id("ak"),
+    projectId,
     name: name.trim() || "Default key",
     keyPreview: previewApiKey(key),
     enabled: true,
     createdAt
   };
   db.run(
-    "INSERT INTO api_keys (id, name, key_hash, key_preview, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    [apiKey.id, apiKey.name, hashApiKey(key), apiKey.keyPreview, 1, apiKey.createdAt]
+    "INSERT INTO api_keys (id, project_id, name, key_hash, key_preview, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [apiKey.id, apiKey.projectId, apiKey.name, hashApiKey(key), apiKey.keyPreview, 1, apiKey.createdAt]
   );
   addLog(
     {
+      projectId,
       level: "success",
       type: "api_key.created",
       message: `Created API key ${apiKey.name}.`
@@ -323,6 +424,7 @@ export function revokeApiKey(apiKeyId: string) {
   db.run("UPDATE api_keys SET enabled = 0, revoked_at = ? WHERE id = ?", [revokedAt, apiKeyId]);
   addLog(
     {
+      projectId: existing.projectId,
       level: "warning",
       type: "api_key.revoked",
       message: `Revoked API key ${existing.name}.`
@@ -346,10 +448,11 @@ export function createPaymentIntent(input: Omit<PaymentIntent, "id" | "status" |
   paymentIntent.checkoutUrl = `/pay/${paymentIntent.id}`;
   db.run(
     `INSERT INTO payment_intents
-      (id, amount, receiver, status, checkout_url, description, template, metadata, tx_hash, receipt_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, project_id, amount, receiver, status, checkout_url, description, template, metadata, tx_hash, receipt_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       paymentIntent.id,
+      paymentIntent.projectId,
       paymentIntent.amount,
       paymentIntent.receiver,
       paymentIntent.status,
@@ -366,6 +469,7 @@ export function createPaymentIntent(input: Omit<PaymentIntent, "id" | "status" |
   addLog(
     {
       level: "info",
+      projectId: paymentIntent.projectId,
       type: "payment_intent.created",
       message: `Created ${paymentIntent.description} for ${paymentIntent.amount} raw USDC.`,
       paymentIntentId: paymentIntent.id
@@ -410,10 +514,11 @@ export function createReceipt(input: Omit<Receipt, "id" | "status" | "receiptUrl
   receipt.receiptUrl = `/receipts/${receipt.id}`;
   db.run(
     `INSERT INTO receipts
-      (id, payment_intent_id, amount, receiver, payer, tx_hash, status, receipt_url, metadata, issued_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, project_id, payment_intent_id, amount, receiver, payer, tx_hash, status, receipt_url, metadata, issued_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       receipt.id,
+      receipt.projectId,
       receipt.paymentIntentId,
       receipt.amount,
       receipt.receiver,
@@ -428,6 +533,7 @@ export function createReceipt(input: Omit<Receipt, "id" | "status" | "receiptUrl
   addLog(
     {
       level: "success",
+      projectId: receipt.projectId,
       type: "receipt.issued",
       message: `Issued receipt for payment intent ${receipt.paymentIntentId}.`,
       paymentIntentId: receipt.paymentIntentId,
@@ -439,20 +545,23 @@ export function createReceipt(input: Omit<Receipt, "id" | "status" | "receiptUrl
   return receipt;
 }
 
-export function addWebhook(input: Pick<WebhookEndpoint, "url" | "events" | "enabled">, shouldPersist = true) {
-  if (findWebhookByUrl(input.url)) {
+export function addWebhook(input: Pick<WebhookEndpoint, "url" | "events" | "enabled"> & { projectId?: string }, shouldPersist = true) {
+  const projectId = input.projectId || DEFAULT_PROJECT_ID;
+  if (findWebhookByUrl(input.url, projectId)) {
     throw new Error("A webhook endpoint with this URL already exists.");
   }
   const createdAt = now();
   const webhook: WebhookEndpoint = {
     ...input,
     id: id("wh"),
+    projectId,
     signingSecret: createWebhookSecret(),
     lastRotatedAt: createdAt,
     createdAt
   };
-  db.run("INSERT INTO webhooks (id, url, events, enabled, signing_secret, last_rotated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+  db.run("INSERT INTO webhooks (id, project_id, url, events, enabled, signing_secret, last_rotated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
     webhook.id,
+    webhook.projectId,
     webhook.url,
     JSON.stringify(webhook.events),
     webhook.enabled ? 1 : 0,
@@ -463,6 +572,7 @@ export function addWebhook(input: Pick<WebhookEndpoint, "url" | "events" | "enab
   addLog(
     {
       level: "info",
+      projectId: webhook.projectId,
       type: "webhook.created",
       message: `Registered webhook endpoint ${webhook.url}.`
     },
@@ -486,7 +596,7 @@ export function updateWebhook(
     enabled: input.enabled ?? existing.enabled
   };
 
-  const duplicate = findWebhookByUrl(updated.url);
+  const duplicate = findWebhookByUrl(updated.url, updated.projectId);
   if (duplicate && duplicate.id !== webhookId) {
     throw new Error("A webhook endpoint with this URL already exists.");
   }
@@ -500,6 +610,7 @@ export function updateWebhook(
   addLog(
     {
       level: "info",
+      projectId: updated.projectId,
       type: "webhook.updated",
       message: `Updated webhook endpoint ${updated.url}.`
     },
@@ -524,6 +635,7 @@ export function rotateWebhookSecret(webhookId: string) {
   addLog(
     {
       level: "warning",
+      projectId: existing.projectId,
       type: "webhook.secret_rotated",
       message: isDemoEndpoint
         ? `Synced local demo webhook secret for endpoint ${existing.url}.`
@@ -543,6 +655,7 @@ export function deleteWebhook(webhookId: string) {
   addLog(
     {
       level: "warning",
+      projectId: existing.projectId,
       type: "webhook.deleted",
       message: `Deleted webhook endpoint ${existing.url}.`
     },
@@ -556,8 +669,8 @@ export function getWebhook(webhookId: string) {
   return getOne("SELECT * FROM webhooks WHERE id = ?", [webhookId], mapWebhook);
 }
 
-export function findWebhookByUrl(url: string) {
-  return getOne("SELECT * FROM webhooks WHERE lower(url) = lower(?)", [url], mapWebhook);
+export function findWebhookByUrl(url: string, projectId = DEFAULT_PROJECT_ID) {
+  return getOne("SELECT * FROM webhooks WHERE lower(url) = lower(?) AND project_id = ?", [url, projectId], mapWebhook);
 }
 
 export function getWebhookDelivery(deliveryId: string) {
@@ -572,10 +685,11 @@ export function addWebhookDelivery(input: Omit<WebhookDelivery, "id" | "createdA
   };
   db.run(
     `INSERT INTO webhook_deliveries
-      (id, webhook_id, event_type, endpoint_url, status, http_status, attempt, error, payload, response_body, signature_header, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, project_id, webhook_id, event_type, endpoint_url, status, http_status, attempt, error, payload, response_body, signature_header, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       delivery.id,
+      delivery.projectId || null,
       delivery.webhookId || null,
       delivery.eventType,
       delivery.endpointUrl || null,
@@ -600,17 +714,21 @@ export function addLog(input: Omit<EventLog, "id" | "createdAt">, shouldPersist 
     createdAt: now()
   };
   db.run(
-    "INSERT INTO event_logs (id, level, type, message, payment_intent_id, receipt_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [log.id, log.level, log.type, log.message, log.paymentIntentId || null, log.receiptId || null, log.createdAt]
+    "INSERT INTO event_logs (id, project_id, level, type, message, payment_intent_id, receipt_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    [log.id, log.projectId || null, log.level, log.type, log.message, log.paymentIntentId || null, log.receiptId || null, log.createdAt]
   );
   if (shouldPersist) persist();
   return log;
 }
 
-export function resetDemoData() {
-  db.run("DELETE FROM payment_intents; DELETE FROM receipts; DELETE FROM webhook_deliveries; DELETE FROM event_logs;");
+export function resetDemoData(projectId = DEFAULT_PROJECT_ID) {
+  db.run("DELETE FROM payment_intents WHERE project_id = ?", [projectId]);
+  db.run("DELETE FROM receipts WHERE project_id = ?", [projectId]);
+  db.run("DELETE FROM webhook_deliveries WHERE project_id = ?", [projectId]);
+  db.run("DELETE FROM event_logs WHERE project_id = ?", [projectId]);
   addLog(
     {
+      projectId,
       level: "warning",
       type: "demo.reset",
       message: "Demo data was reset. Webhook endpoint configuration was preserved."
@@ -620,9 +738,10 @@ export function resetDemoData() {
   persist();
 }
 
-export function seedDemoIntent() {
-  ensureDemoMerchantWebhook();
+export function seedDemoIntent(projectId = DEFAULT_PROJECT_ID) {
+  ensureDemoMerchantWebhook(projectId);
   return createPaymentIntent({
+    projectId,
     amount: "10000000",
     receiver: "0x0000000000000000000000000000000000000001",
     description: "Demo API access unlock",
@@ -635,9 +754,9 @@ export function seedDemoIntent() {
   });
 }
 
-export function ensureDemoMerchantWebhook() {
+export function ensureDemoMerchantWebhook(projectId = DEFAULT_PROJECT_ID) {
   const signingSecret = demoMerchantWebhookSecret();
-  const existing = getOne("SELECT * FROM webhooks WHERE url = ?", [DEMO_MERCHANT_WEBHOOK_URL], mapWebhook);
+  const existing = getOne("SELECT * FROM webhooks WHERE url = ? AND project_id = ?", [DEMO_MERCHANT_WEBHOOK_URL, projectId], mapWebhook);
   if (existing) {
     db.run("UPDATE webhooks SET enabled = ?, events = ?, signing_secret = ?, last_rotated_at = ? WHERE id = ?", [
       1,
@@ -656,6 +775,7 @@ export function ensureDemoMerchantWebhook() {
   }
 
   const webhook = addWebhook({
+    projectId,
     url: DEMO_MERCHANT_WEBHOOK_URL,
     events: ["payment_intent.paid", "receipt.issued"],
     enabled: true
@@ -686,6 +806,15 @@ function hashApiKey(key: string) {
 
 function previewApiKey(key: string) {
   return `${key.slice(0, 12)}...${key.slice(-6)}`;
+}
+
+function createProjectSlug(name: string) {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 36) || "project";
+  return `${base}-${randomUUID().replaceAll("-", "").slice(0, 6)}`;
 }
 
 function createWebhookSecret() {
