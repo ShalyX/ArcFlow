@@ -529,6 +529,12 @@ tr:last-child td {
   gap: 8px;
 }
 
+.field-note {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .event-checkboxes legend {
   color: var(--muted);
   font-size: 13px;
@@ -561,6 +567,79 @@ tr:last-child td {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.secret-line {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) minmax(160px, auto);
+  gap: 10px;
+  align-items: center;
+  border: 1px dashed #c7c0b1;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.secret-line span,
+.secret-line small {
+  color: var(--muted);
+}
+
+.secret-line code {
+  font-size: 13px;
+}
+
+.delivery-detail {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.delivery-detail .panel-heading {
+  justify-content: space-between;
+}
+
+.delivery-detail dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.delivery-detail dl div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.delivery-detail dt {
+  color: var(--muted);
+}
+
+.delivery-detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-code {
+  display: grid;
+  gap: 8px;
+}
+
+.detail-code pre {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  border-radius: 8px;
+  padding: 12px;
+  background: #151a18;
+  color: #e7f2df;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .danger-button {
@@ -918,6 +997,11 @@ code {
   }
 
   .receipt-document dl div {
+    grid-template-columns: 1fr;
+  }
+
+  .secret-line,
+  .delivery-detail dl div {
     grid-template-columns: 1fr;
   }
 

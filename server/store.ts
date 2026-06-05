@@ -60,6 +60,8 @@ function migrate() {
       url TEXT NOT NULL,
       events TEXT NOT NULL,
       enabled INTEGER NOT NULL,
+      signing_secret TEXT,
+      last_rotated_at TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -73,6 +75,8 @@ function migrate() {
       attempt INTEGER NOT NULL,
       error TEXT,
       payload TEXT,
+      response_body TEXT,
+      signature_header TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -87,6 +91,11 @@ function migrate() {
     );
   `);
   addColumnIfMissing("webhook_deliveries", "payload", "TEXT");
+  addColumnIfMissing("webhook_deliveries", "response_body", "TEXT");
+  addColumnIfMissing("webhook_deliveries", "signature_header", "TEXT");
+  addColumnIfMissing("webhooks", "signing_secret", "TEXT");
+  addColumnIfMissing("webhooks", "last_rotated_at", "TEXT");
+  backfillWebhookSecrets();
 }
 
 function addColumnIfMissing(table: string, column: string, definition: string) {
@@ -170,12 +179,15 @@ function mapReceipt(row: Row): Receipt {
 }
 
 function mapWebhook(row: Row): WebhookEndpoint {
+  const createdAt = asText(row.created_at);
   return {
     id: asText(row.id),
     url: asText(row.url),
     events: parseJson<string[]>(row.events, []),
     enabled: Boolean(row.enabled),
-    createdAt: asText(row.created_at)
+    signingSecret: asText(row.signing_secret) || createWebhookSecret(),
+    lastRotatedAt: asText(row.last_rotated_at) || createdAt,
+    createdAt
   };
 }
 
@@ -190,8 +202,21 @@ function mapDelivery(row: Row): WebhookDelivery {
     attempt: Number(row.attempt),
     error: asOptionalText(row.error),
     payload: parseJson<Record<string, unknown> | undefined>(row.payload, undefined),
+    responseBody: asOptionalText(row.response_body),
+    signatureHeader: asOptionalText(row.signature_header),
     createdAt: asText(row.created_at)
   };
+}
+
+function backfillWebhookSecrets() {
+  const rows = all("SELECT * FROM webhooks WHERE signing_secret IS NULL OR signing_secret = ''", [], mapWebhook);
+  for (const webhook of rows) {
+    db.run("UPDATE webhooks SET signing_secret = ?, last_rotated_at = ? WHERE id = ?", [
+      createWebhookSecret(),
+      webhook.lastRotatedAt || now(),
+      webhook.id
+    ]);
+  }
 }
 
 function mapLog(row: Row): EventLog {
@@ -323,16 +348,24 @@ export function createReceipt(input: Omit<Receipt, "id" | "status" | "receiptUrl
 }
 
 export function addWebhook(input: Pick<WebhookEndpoint, "url" | "events" | "enabled">, shouldPersist = true) {
+  if (findWebhookByUrl(input.url)) {
+    throw new Error("A webhook endpoint with this URL already exists.");
+  }
+  const createdAt = now();
   const webhook: WebhookEndpoint = {
     ...input,
     id: id("wh"),
-    createdAt: now()
+    signingSecret: createWebhookSecret(),
+    lastRotatedAt: createdAt,
+    createdAt
   };
-  db.run("INSERT INTO webhooks (id, url, events, enabled, created_at) VALUES (?, ?, ?, ?, ?)", [
+  db.run("INSERT INTO webhooks (id, url, events, enabled, signing_secret, last_rotated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", [
     webhook.id,
     webhook.url,
     JSON.stringify(webhook.events),
     webhook.enabled ? 1 : 0,
+    webhook.signingSecret,
+    webhook.lastRotatedAt,
     webhook.createdAt
   ]);
   addLog(
@@ -361,6 +394,11 @@ export function updateWebhook(
     enabled: input.enabled ?? existing.enabled
   };
 
+  const duplicate = findWebhookByUrl(updated.url);
+  if (duplicate && duplicate.id !== webhookId) {
+    throw new Error("A webhook endpoint with this URL already exists.");
+  }
+
   db.run("UPDATE webhooks SET url = ?, events = ?, enabled = ? WHERE id = ?", [
     updated.url,
     JSON.stringify(updated.events),
@@ -377,6 +415,29 @@ export function updateWebhook(
   );
   persist();
   return updated;
+}
+
+export function rotateWebhookSecret(webhookId: string) {
+  const existing = getWebhook(webhookId);
+  if (!existing) return undefined;
+
+  const signingSecret = createWebhookSecret();
+  const lastRotatedAt = now();
+  db.run("UPDATE webhooks SET signing_secret = ?, last_rotated_at = ? WHERE id = ?", [
+    signingSecret,
+    lastRotatedAt,
+    webhookId
+  ]);
+  addLog(
+    {
+      level: "warning",
+      type: "webhook.secret_rotated",
+      message: `Rotated signing secret for webhook endpoint ${existing.url}.`
+    },
+    false
+  );
+  persist();
+  return { ...existing, signingSecret, lastRotatedAt };
 }
 
 export function deleteWebhook(webhookId: string) {
@@ -400,6 +461,10 @@ export function getWebhook(webhookId: string) {
   return getOne("SELECT * FROM webhooks WHERE id = ?", [webhookId], mapWebhook);
 }
 
+export function findWebhookByUrl(url: string) {
+  return getOne("SELECT * FROM webhooks WHERE lower(url) = lower(?)", [url], mapWebhook);
+}
+
 export function getWebhookDelivery(deliveryId: string) {
   return getOne("SELECT * FROM webhook_deliveries WHERE id = ?", [deliveryId], mapDelivery);
 }
@@ -412,8 +477,8 @@ export function addWebhookDelivery(input: Omit<WebhookDelivery, "id" | "createdA
   };
   db.run(
     `INSERT INTO webhook_deliveries
-      (id, webhook_id, event_type, endpoint_url, status, http_status, attempt, error, payload, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, webhook_id, event_type, endpoint_url, status, http_status, attempt, error, payload, response_body, signature_header, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       delivery.id,
       delivery.webhookId || null,
@@ -424,6 +489,8 @@ export function addWebhookDelivery(input: Omit<WebhookDelivery, "id" | "createdA
       delivery.attempt,
       delivery.error || null,
       delivery.payload ? JSON.stringify(delivery.payload) : null,
+      delivery.responseBody || null,
+      delivery.signatureHeader || null,
       delivery.createdAt
     ]
   );
@@ -476,18 +543,35 @@ export function seedDemoIntent() {
 export function ensureDemoMerchantWebhook() {
   const existing = getOne("SELECT * FROM webhooks WHERE url = ?", ["http://127.0.0.1:9090/webhooks/arcflow"], mapWebhook);
   if (existing) {
-    db.run("UPDATE webhooks SET enabled = ?, events = ? WHERE id = ?", [
+    db.run("UPDATE webhooks SET enabled = ?, events = ?, signing_secret = ?, last_rotated_at = ? WHERE id = ?", [
       1,
       JSON.stringify(["payment_intent.paid", "receipt.issued"]),
+      process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret",
+      existing.lastRotatedAt || now(),
       existing.id
     ]);
     persist();
-    return { ...existing, enabled: true, events: ["payment_intent.paid", "receipt.issued"] };
+    return {
+      ...existing,
+      enabled: true,
+      events: ["payment_intent.paid", "receipt.issued"],
+      signingSecret: process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret"
+    };
   }
 
-  return addWebhook({
+  const webhook = addWebhook({
     url: "http://127.0.0.1:9090/webhooks/arcflow",
     events: ["payment_intent.paid", "receipt.issued"],
     enabled: true
   });
+  db.run("UPDATE webhooks SET signing_secret = ? WHERE id = ?", [
+    process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret",
+    webhook.id
+  ]);
+  persist();
+  return { ...webhook, signingSecret: process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret" };
+}
+
+function createWebhookSecret() {
+  return `whsec_${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "").slice(0, 8)}`;
 }

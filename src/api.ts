@@ -82,6 +82,12 @@ export function testWebhook(id: string) {
   });
 }
 
+export function rotateWebhookSecret(id: string) {
+  return request<WebhookEndpoint>(`/webhooks/${id}/rotate-secret`, {
+    method: "POST"
+  });
+}
+
 export function retryWebhookDelivery(id: string) {
   return request<DashboardState>(`/webhook-deliveries/${id}/retry`, {
     method: "POST"

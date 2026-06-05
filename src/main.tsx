@@ -35,6 +35,7 @@ import {
   getPaymentIntent,
   resetDemoData,
   retryWebhookDelivery,
+  rotateWebhookSecret,
   seedDemoIntent,
   testWebhook,
   updateWebhook
@@ -355,6 +356,7 @@ function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndp
           Endpoint URL
           <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com/webhooks/arcflow" />
         </label>
+        <div className="field-note">Localhost endpoints work for this local demo. Hosted ArcFlow will require public HTTPS endpoints.</div>
         <fieldset className="event-checkboxes">
           <legend>Events</legend>
           {supportedWebhookEvents.map((event) => (
@@ -386,6 +388,14 @@ function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndp
               </div>
             </div>
             <div className="webhook-actions">
+              <button className="tiny-button" onClick={() => navigator.clipboard.writeText(webhook.signingSecret)}>
+                <Copy size={15} />
+                Copy secret
+              </button>
+              <button className="tiny-button" onClick={() => run(`rotate-${webhook.id}`, () => rotateWebhookSecret(webhook.id))}>
+                {busy === `rotate-${webhook.id}` ? <Loader2 className="spin" size={15} /> : <KeyRound size={15} />}
+                Rotate secret
+              </button>
               <button
                 className="tiny-button"
                 onClick={() => run(`toggle-${webhook.id}`, () => updateWebhook(webhook.id, { enabled: !webhook.enabled }))}
@@ -402,6 +412,11 @@ function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndp
                 Delete
               </button>
             </div>
+            <div className="secret-line">
+              <span>Signing secret</span>
+              <code>{maskSecret(webhook.signingSecret)}</code>
+              <small>Last rotated {new Date(webhook.lastRotatedAt).toLocaleString()}</small>
+            </div>
           </article>
         ))}
         {webhooks.length === 0 && (
@@ -410,6 +425,11 @@ function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndp
       </div>
     </div>
   );
+}
+
+function maskSecret(secret: string) {
+  if (!secret) return "whsec_unset";
+  return `${secret.slice(0, 10)}${"*".repeat(10)}${secret.slice(-4)}`;
 }
 
 type MerchantAccess = {
@@ -923,6 +943,8 @@ function ReceiptGrid({ receipts, onNavigate }: { receipts: Receipt[]; onNavigate
 function WebhookDeliveries({ deliveries, onRefresh }: { deliveries: DashboardState["webhookDeliveries"]; onRefresh: () => Promise<void> }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [selectedDeliveryId, setSelectedDeliveryId] = useState("");
+  const selectedDelivery = deliveries.find((delivery) => delivery.id === selectedDeliveryId);
 
   if (deliveries.length === 0) return <div className="empty-state">Webhook events show what ArcFlow told your app after payment verification.</div>;
 
@@ -966,21 +988,60 @@ function WebhookDeliveries({ deliveries, onRefresh }: { deliveries: DashboardSta
                 <td>{delivery.httpStatus || "-"}</td>
                 <td>{delivery.attempt}</td>
                 <td>
-                  {delivery.status === "failed" && delivery.webhookId ? (
-                    <button className="tiny-button" onClick={() => retry(delivery.id)} disabled={Boolean(busy)}>
-                      {busy === delivery.id ? <Loader2 className="spin" size={15} /> : <Activity size={15} />}
-                      Retry
+                  <div className="row-actions">
+                    <button className="tiny-button" onClick={() => setSelectedDeliveryId(delivery.id)}>
+                      <ExternalLink size={15} />
+                      Details
                     </button>
-                  ) : (
-                    <span className="muted-dash">-</span>
-                  )}
+                    {delivery.status === "failed" && delivery.webhookId ? (
+                      <button className="tiny-button" onClick={() => retry(delivery.id)} disabled={Boolean(busy)}>
+                        {busy === delivery.id ? <Loader2 className="spin" size={15} /> : <Activity size={15} />}
+                        Retry
+                      </button>
+                    ) : (
+                      <span className="muted-dash">-</span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {selectedDelivery && (
+        <DeliveryDetail delivery={selectedDelivery} onClose={() => setSelectedDeliveryId("")} />
+      )}
     </>
+  );
+}
+
+function DeliveryDetail({ delivery, onClose }: { delivery: DashboardState["webhookDeliveries"][number]; onClose: () => void }) {
+  return (
+    <section className="delivery-detail">
+      <div className="panel-heading">
+        <Webhook size={20} />
+        <div>
+          <h2>Delivery Details</h2>
+          <p>{delivery.eventType}</p>
+        </div>
+        <button className="tiny-button" onClick={onClose}>Close</button>
+      </div>
+      <dl>
+        <div><dt>Endpoint URL</dt><dd>{delivery.endpointUrl || "No endpoint"}</dd></div>
+        <div><dt>Status</dt><dd><Status value={delivery.status} /></dd></div>
+        <div><dt>HTTP status</dt><dd>{delivery.httpStatus || "-"}</dd></div>
+        <div><dt>Retry count</dt><dd>{Math.max(0, delivery.attempt - 1)}</dd></div>
+        <div><dt>Last retry</dt><dd>{delivery.attempt > 1 ? new Date(delivery.createdAt).toLocaleString() : "Not retried"}</dd></div>
+        <div><dt>Next retry</dt><dd>Manual retry only</dd></div>
+        <div><dt>Created at</dt><dd>{new Date(delivery.createdAt).toLocaleString()}</dd></div>
+        <div><dt>Signature header</dt><dd>{delivery.signatureHeader || "-"}</dd></div>
+        <div><dt>Response body</dt><dd>{delivery.responseBody || delivery.error || "-"}</dd></div>
+      </dl>
+      <div className="detail-code">
+        <strong>Request payload</strong>
+        <pre>{JSON.stringify(delivery.payload || {}, null, 2)}</pre>
+      </div>
+    </section>
   );
 }
 

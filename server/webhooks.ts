@@ -7,10 +7,8 @@ type WebhookPayload = {
   data: Record<string, unknown>;
 };
 
-export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: WebhookEndpoint[]) {
-  const secret = process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret";
+export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: WebhookEndpoint[], attempt = 1) {
   const body = JSON.stringify(payload);
-  const signature = crypto.createHmac("sha256", secret).update(body).digest("hex");
   const enabledHooks = targetHooks || getState().webhooks.filter((webhook) => webhook.enabled && webhook.events.includes(payload.type));
 
   if (enabledHooks.length === 0) {
@@ -31,6 +29,7 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
 
   await Promise.allSettled(
     enabledHooks.map(async (webhook) => {
+      const signature = crypto.createHmac("sha256", webhook.signingSecret).update(body).digest("hex");
       try {
         const response = await fetch(webhook.url, {
           method: "POST",
@@ -40,6 +39,7 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
           },
           body
         });
+        const responseBody = await response.text();
 
         addLog({
           level: response.ok ? "success" : "warning",
@@ -52,8 +52,10 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
           endpointUrl: webhook.url,
           status: response.ok ? "delivered" : "failed",
           httpStatus: response.status,
-          attempt: 1,
-          payload
+          attempt,
+          payload,
+          responseBody: responseBody.slice(0, 4000),
+          signatureHeader: signature
         });
       } catch (error) {
         addWebhookDelivery({
@@ -61,9 +63,10 @@ export async function deliverWebhooks(payload: WebhookPayload, targetHooks?: Web
           eventType: payload.type,
           endpointUrl: webhook.url,
           status: "failed",
-          attempt: 1,
+          attempt,
           error: error instanceof Error ? error.message : "Webhook delivery failed.",
-          payload
+          payload,
+          signatureHeader: signature
         });
         addLog({
           level: "error",

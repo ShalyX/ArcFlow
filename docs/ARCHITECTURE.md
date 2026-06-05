@@ -35,6 +35,7 @@ It provides:
 - `POST /api/webhooks`
 - `PATCH /api/webhooks/:id`
 - `DELETE /api/webhooks/:id`
+- `POST /api/webhooks/:id/rotate-secret`
 - `POST /api/webhooks/:id/test`
 - `POST /api/webhook-deliveries/:id/retry`
 
@@ -67,13 +68,15 @@ It checks:
 
 **Webhook Delivery**
 
-`server/webhooks.ts` signs outgoing events with HMAC-SHA256 and sends them to enabled endpoints.
+`server/webhooks.ts` signs outgoing events with each endpoint's HMAC-SHA256 signing secret and sends them to enabled endpoints.
 
 Header:
 
 ```txt
 x-arcflow-signature
 ```
+
+Delivery attempts store the endpoint URL, event type, status, HTTP status, request payload, response body or error, signature header, attempt count, and created timestamp. The console uses that record for the Stripe-style delivery detail view and manual retries.
 
 **Merchant Demo**
 

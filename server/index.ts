@@ -20,6 +20,7 @@ import {
   initStore,
   markIntentPaid,
   resetDemoData,
+  rotateWebhookSecret,
   seedDemoIntent,
   updateWebhook
 } from "./store";
@@ -198,6 +199,15 @@ app.delete("/api/webhooks/:id", (request, response) => {
   response.status(204).send();
 });
 
+app.post("/api/webhooks/:id/rotate-secret", (request, response) => {
+  const webhook = rotateWebhookSecret(request.params.id);
+  if (!webhook) {
+    response.status(404).json({ error: "Webhook endpoint not found." });
+    return;
+  }
+  response.json(webhook);
+});
+
 app.post("/api/webhooks/:id/test", async (request, response) => {
   const webhook = getWebhook(request.params.id);
   if (!webhook) {
@@ -245,7 +255,8 @@ app.post("/api/webhook-deliveries/:id/retry", async (request, response) => {
       type: delivery.eventType,
       data: (delivery.payload?.data as Record<string, unknown> | undefined) || { retry: true }
     },
-    [{ ...webhook, enabled: true, events: [delivery.eventType] }]
+    [{ ...webhook, enabled: true, events: [delivery.eventType] }],
+    delivery.attempt + 1
   );
   response.json(getState());
 });
@@ -275,7 +286,15 @@ function parseWebhookInput(body: unknown, partial: boolean) {
   if (!partial || input.url !== undefined) {
     const url = String(input.url || "").trim();
     if (!url) throw new Error("Webhook URL is required.");
-    if (!/^https?:\/\//.test(url)) throw new Error("Webhook URL must start with http:// or https://.");
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new Error("Webhook URL must be a valid URL.");
+    }
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+      throw new Error("Webhook URL must start with http:// or https://.");
+    }
     result.url = url;
   }
 

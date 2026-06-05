@@ -11,6 +11,7 @@ This first build focuses on the core product:
 - Receipts
 - Webhook delivery
 - Webhook endpoint management
+- Webhook secret rotation and delivery debugging
 - Event logs
 - Starter templates
 - SQLite persistence
@@ -187,6 +188,8 @@ GET  http://127.0.0.1:9090/access/:customerId
 
 The example verifies `x-arcflow-signature`, then unlocks access when it receives `payment_intent.paid`.
 
+Webhook endpoints can be managed from the console. Each endpoint has its own signing secret, copy/rotate controls, event subscriptions, test delivery, and retry support for failed deliveries. Delivery rows also open into a debugging detail view with request payload, response body, HTTP status, signature header, retry count, and timestamps.
+
 The API runs on:
 
 ```txt
@@ -331,6 +334,8 @@ Webhook event:
 
 Webhook payloads are signed with `x-arcflow-signature` using HMAC-SHA256.
 
+Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, duplicate endpoint URLs, and endpoints with no selected events. Localhost endpoints are supported for the local demo; hosted deployments should require public HTTPS endpoints.
+
 ## Roadmap
 
 - Splits: route revenue to multiple receivers after settlement.
@@ -344,5 +349,5 @@ Webhook payloads are signed with `x-arcflow-signature` using HMAC-SHA256.
 - Local SQLite only.
 - No API authentication yet.
 - No production deployment profile yet.
-- Webhook delivery history exists, but endpoint management and retry controls are still minimal.
 - Webhook endpoint management is local-only and does not include production authentication yet.
+- Webhook secrets are stored in local SQLite for the MVP; production deployments should move secrets to managed secret storage.

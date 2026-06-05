@@ -35,7 +35,7 @@ Underpayments do not settle payment intents.
 
 ## Webhook Signatures
 
-Outgoing webhook payloads are signed with HMAC-SHA256.
+Outgoing webhook payloads are signed with HMAC-SHA256 using the target endpoint's signing secret.
 
 Receivers should verify:
 
@@ -49,6 +49,10 @@ The SDK exposes:
 verifyArcFlowWebhook(...)
 ```
 
+Each endpoint has a `whsec_...` signing secret, copy control, rotate control, and last-rotated timestamp in the local console. The merchant demo endpoint uses `WEBHOOK_SIGNING_SECRET` or `local-dev-secret` so the bundled receiver can verify local webhooks without extra setup.
+
+Endpoint creation rejects empty URLs, invalid URLs, unsupported protocols, duplicate endpoint URLs, and endpoints with no selected events. Localhost endpoints are useful for the local demo, but hosted deployments should require public HTTPS endpoints.
+
 ## Secrets
 
 Do not commit:
@@ -60,10 +64,11 @@ Do not commit:
 
 Use `.env.example` as the public template.
 
+Webhook secrets are stored in local SQLite for the MVP. A production deployment should move them to managed secret storage and gate endpoint management behind authentication and authorization.
+
 ## Current Limitations
 
 - Local-only SQLite database.
 - Testnet-only chain config.
 - No API authentication yet.
-- No webhook retry UI yet.
 - No hosted deployment config yet.

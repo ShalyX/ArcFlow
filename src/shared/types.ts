@@ -34,6 +34,8 @@ export type WebhookEndpoint = {
   url: string;
   events: string[];
   enabled: boolean;
+  signingSecret: string;
+  lastRotatedAt: string;
   createdAt: string;
 };
 
@@ -47,6 +49,8 @@ export type WebhookDelivery = {
   attempt: number;
   error?: string;
   payload?: Record<string, unknown>;
+  responseBody?: string;
+  signatureHeader?: string;
   createdAt: string;
 };
 

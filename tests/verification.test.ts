@@ -160,13 +160,46 @@ describe("payment intent API guards", () => {
 
     assert.equal(webhook.enabled, true);
     assert.equal(webhook.events[0], "payment_intent.paid");
+    assert.match(webhook.signingSecret, /^whsec_/);
+    assert.ok(webhook.lastRotatedAt);
+
+    const duplicate = await postRaw(`${apiBase}/webhooks`, {
+      url: "http://127.0.0.1:1/webhooks/arcflow",
+      events: ["payment_intent.paid"],
+      enabled: true
+    });
+    assert.equal(duplicate.status, 400);
+
+    const badProtocol = await postRaw(`${apiBase}/webhooks`, {
+      url: "ftp://example.com/webhooks/arcflow",
+      events: ["payment_intent.paid"],
+      enabled: true
+    });
+    assert.equal(badProtocol.status, 400);
+
+    const noEvents = await postRaw(`${apiBase}/webhooks`, {
+      url: "http://127.0.0.1:2/webhooks/arcflow",
+      events: [],
+      enabled: true
+    });
+    assert.equal(noEvents.status, 400);
 
     const updated = await patch(`${apiBase}/webhooks/${webhook.id}`, { enabled: false });
     assert.equal(updated.enabled, false);
 
+    const rotated = await post(`${apiBase}/webhooks/${webhook.id}/rotate-secret`);
+    assert.notEqual(rotated.signingSecret, webhook.signingSecret);
+    assert.match(rotated.signingSecret, /^whsec_/);
+
     const tested = await post(`${apiBase}/webhooks/${webhook.id}/test`);
     assert.ok(tested.webhookDeliveries.length > 0);
     assert.equal(tested.webhookDeliveries[0].status, "failed");
+    assert.equal(tested.webhookDeliveries[0].attempt, 1);
+    assert.ok(tested.webhookDeliveries[0].signatureHeader);
+    assert.ok(tested.webhookDeliveries[0].payload);
+
+    const retried = await post(`${apiBase}/webhook-deliveries/${tested.webhookDeliveries[0].id}/retry`);
+    assert.equal(retried.webhookDeliveries[0].attempt, 2);
 
     const deleted = await fetch(`${apiBase}/webhooks/${webhook.id}`, { method: "DELETE" });
     assert.equal(deleted.status, 204);
