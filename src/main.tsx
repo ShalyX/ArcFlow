@@ -303,6 +303,7 @@ function Dashboard({
 }
 
 const supportedWebhookEvents = ["payment_intent.paid", "receipt.issued"];
+const demoMerchantWebhookUrl = "http://127.0.0.1:9090/webhooks/arcflow";
 
 function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndpoint[]; onRefresh: () => Promise<void> }) {
   const [url, setUrl] = useState("http://127.0.0.1:9090/webhooks/arcflow");
@@ -378,7 +379,9 @@ function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndp
       </form>
 
       <div className="webhook-list">
-        {webhooks.map((webhook) => (
+        {webhooks.map((webhook) => {
+          const isDemoEndpoint = webhook.url === demoMerchantWebhookUrl;
+          return (
           <article className="webhook-card" key={webhook.id}>
             <div className="line-card">
               <Webhook size={19} />
@@ -394,7 +397,7 @@ function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndp
               </button>
               <button className="tiny-button" onClick={() => run(`rotate-${webhook.id}`, () => rotateWebhookSecret(webhook.id))}>
                 {busy === `rotate-${webhook.id}` ? <Loader2 className="spin" size={15} /> : <KeyRound size={15} />}
-                Rotate secret
+                {isDemoEndpoint ? "Sync secret" : "Rotate secret"}
               </button>
               <button
                 className="tiny-button"
@@ -413,12 +416,16 @@ function WebhookEndpointManager({ webhooks, onRefresh }: { webhooks: WebhookEndp
               </button>
             </div>
             <div className="secret-line">
-              <span>Signing secret</span>
+              <span>{isDemoEndpoint ? "Demo signing secret" : "Signing secret"}</span>
               <code>{maskSecret(webhook.signingSecret)}</code>
               <small>Last rotated {new Date(webhook.lastRotatedAt).toLocaleString()}</small>
             </div>
+            {isDemoEndpoint && (
+              <div className="field-note">This bundled endpoint must match the merchant demo's local webhook secret.</div>
+            )}
           </article>
-        ))}
+          );
+        })}
         {webhooks.length === 0 && (
           <div className="empty-state">Webhook endpoints are where ArcFlow sends signed payment events after verification.</div>
         )}

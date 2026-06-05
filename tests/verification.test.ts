@@ -191,6 +191,12 @@ describe("payment intent API guards", () => {
     assert.notEqual(rotated.signingSecret, webhook.signingSecret);
     assert.match(rotated.signingSecret, /^whsec_/);
 
+    const state = await fetch(`${apiBase}/state`).then((response) => response.json());
+    const demoWebhook = state.webhooks.find((item: { url: string }) => item.url === "http://127.0.0.1:9090/webhooks/arcflow");
+    assert.ok(demoWebhook);
+    const syncedDemo = await post(`${apiBase}/webhooks/${demoWebhook.id}/rotate-secret`);
+    assert.equal(syncedDemo.signingSecret, "local-dev-secret");
+
     const tested = await post(`${apiBase}/webhooks/${webhook.id}/test`);
     assert.ok(tested.webhookDeliveries.length > 0);
     assert.equal(tested.webhookDeliveries[0].status, "failed");

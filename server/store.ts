@@ -8,6 +8,7 @@ const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
 const dataDir = path.resolve("data");
 const dbPath = process.env.ARCFLOW_DB_PATH ? path.resolve(process.env.ARCFLOW_DB_PATH) : path.join(dataDir, "arcflow.sqlite");
+export const DEMO_MERCHANT_WEBHOOK_URL = "http://127.0.0.1:9090/webhooks/arcflow";
 
 let db: Database;
 
@@ -19,6 +20,7 @@ export async function initStore() {
   db = existsSync(dbPath) ? new SQL.Database(readFileSync(dbPath)) : new SQL.Database();
   migrate();
   seedDefaultWebhook();
+  ensureDemoMerchantWebhook();
   persist();
 }
 
@@ -421,7 +423,8 @@ export function rotateWebhookSecret(webhookId: string) {
   const existing = getWebhook(webhookId);
   if (!existing) return undefined;
 
-  const signingSecret = createWebhookSecret();
+  const isDemoEndpoint = isDemoMerchantWebhookUrl(existing.url);
+  const signingSecret = isDemoEndpoint ? demoMerchantWebhookSecret() : createWebhookSecret();
   const lastRotatedAt = now();
   db.run("UPDATE webhooks SET signing_secret = ?, last_rotated_at = ? WHERE id = ?", [
     signingSecret,
@@ -432,7 +435,9 @@ export function rotateWebhookSecret(webhookId: string) {
     {
       level: "warning",
       type: "webhook.secret_rotated",
-      message: `Rotated signing secret for webhook endpoint ${existing.url}.`
+      message: isDemoEndpoint
+        ? `Synced local demo webhook secret for endpoint ${existing.url}.`
+        : `Rotated signing secret for webhook endpoint ${existing.url}.`
     },
     false
   );
@@ -541,12 +546,13 @@ export function seedDemoIntent() {
 }
 
 export function ensureDemoMerchantWebhook() {
-  const existing = getOne("SELECT * FROM webhooks WHERE url = ?", ["http://127.0.0.1:9090/webhooks/arcflow"], mapWebhook);
+  const signingSecret = demoMerchantWebhookSecret();
+  const existing = getOne("SELECT * FROM webhooks WHERE url = ?", [DEMO_MERCHANT_WEBHOOK_URL], mapWebhook);
   if (existing) {
     db.run("UPDATE webhooks SET enabled = ?, events = ?, signing_secret = ?, last_rotated_at = ? WHERE id = ?", [
       1,
       JSON.stringify(["payment_intent.paid", "receipt.issued"]),
-      process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret",
+      signingSecret,
       existing.lastRotatedAt || now(),
       existing.id
     ]);
@@ -555,21 +561,29 @@ export function ensureDemoMerchantWebhook() {
       ...existing,
       enabled: true,
       events: ["payment_intent.paid", "receipt.issued"],
-      signingSecret: process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret"
+      signingSecret
     };
   }
 
   const webhook = addWebhook({
-    url: "http://127.0.0.1:9090/webhooks/arcflow",
+    url: DEMO_MERCHANT_WEBHOOK_URL,
     events: ["payment_intent.paid", "receipt.issued"],
     enabled: true
   });
   db.run("UPDATE webhooks SET signing_secret = ? WHERE id = ?", [
-    process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret",
+    signingSecret,
     webhook.id
   ]);
   persist();
-  return { ...webhook, signingSecret: process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret" };
+  return { ...webhook, signingSecret };
+}
+
+export function isDemoMerchantWebhookUrl(url?: string) {
+  return url === DEMO_MERCHANT_WEBHOOK_URL;
+}
+
+function demoMerchantWebhookSecret() {
+  return process.env.WEBHOOK_SIGNING_SECRET || "local-dev-secret";
 }
 
 function createWebhookSecret() {

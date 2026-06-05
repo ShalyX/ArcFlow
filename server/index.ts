@@ -10,7 +10,9 @@ import {
   addWebhook,
   createPaymentIntent,
   createReceipt,
+  DEMO_MERCHANT_WEBHOOK_URL,
   deleteWebhook,
+  ensureDemoMerchantWebhook,
   getWebhook,
   getWebhookDelivery,
   getPaymentIntent,
@@ -209,10 +211,13 @@ app.post("/api/webhooks/:id/rotate-secret", (request, response) => {
 });
 
 app.post("/api/webhooks/:id/test", async (request, response) => {
-  const webhook = getWebhook(request.params.id);
+  let webhook = getWebhook(request.params.id);
   if (!webhook) {
     response.status(404).json({ error: "Webhook endpoint not found." });
     return;
+  }
+  if (webhook.url === DEMO_MERCHANT_WEBHOOK_URL) {
+    webhook = ensureDemoMerchantWebhook();
   }
 
   await deliverWebhooks(
@@ -244,10 +249,13 @@ app.post("/api/webhook-deliveries/:id/retry", async (request, response) => {
     return;
   }
 
-  const webhook = getWebhook(delivery.webhookId);
+  let webhook = getWebhook(delivery.webhookId);
   if (!webhook) {
     response.status(404).json({ error: "Original webhook endpoint no longer exists." });
     return;
+  }
+  if (delivery.endpointUrl === DEMO_MERCHANT_WEBHOOK_URL) {
+    webhook = ensureDemoMerchantWebhook();
   }
 
   await deliverWebhooks(
