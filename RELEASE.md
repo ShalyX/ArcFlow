@@ -1,19 +1,25 @@
 # Release Notes
 
-## ArcFlow v0.2.0 - Revenue Split Template
+## ArcFlow v0.2.1 - Revenue Split Plan Naming
 
-ArcFlow now supports accounting-first revenue split payment intents. Split intents compute recipient allocations, render split breakdowns on receipts, include structured split metadata in webhooks, and log the planned allocation trail.
+ArcFlow v0.2.1 corrects the current split feature language from Revenue Split to Revenue Split Plan. The feature is accounting-only today: it records intended allocations on intents, receipts, webhooks, and logs, but it does not execute onchain disbursement.
+
+This release also documents the future settlement split architecture using an `ArcFlowSplitter` contract and includes a starter contract for the approve-and-split payment path.
+
+## ArcFlow v0.2.0 - Revenue Split Plan Template
+
+ArcFlow now supports accounting-first revenue split plan payment intents. Split plan intents compute recipient allocations, render split breakdowns on receipts, include structured split metadata in webhooks, and log the planned allocation trail. They do not execute onchain disbursement in this MVP.
 
 ## What Changed
 
-- Added the `Revenue Split` dashboard template.
+- Added the `Revenue Split Plan` dashboard template.
 - Added SDK support for inline `split` recipients with percentage allocations.
 - Verified split payments by total amount to the settlement wallet.
 - Computed raw USDC allocations deterministically, including predictable rounding remainder handling.
 - Added receipt copy explaining that automatic disbursement is not enabled in this MVP.
 - Expanded regression coverage for split validation and accounting metadata.
 
-## Revenue Split Guide
+## Revenue Split Plan Guide
 
 See `docs/REVENUE_SPLITS.md` for the SDK example, receipt output, webhook payload shape, validation rules, and allocation math.
 

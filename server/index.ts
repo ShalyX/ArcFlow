@@ -485,7 +485,7 @@ function buildInlineSplitPlan(
   return buildSplitPlan({
     id: metadata.splitId || "inline_revenue_split",
     projectId: "",
-    name: metadata.splitName || "Revenue Split",
+    name: metadata.splitName || "Revenue Split Plan",
     settlementReceiver,
     receivers,
     createdAt: new Date().toISOString()

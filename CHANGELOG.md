@@ -1,11 +1,18 @@
 # Changelog
 
-## v0.2.0 - Revenue Split Template
+## v0.2.1 - Revenue Split Plan Naming
 
-- Added accounting-first revenue split payment intents.
+- Renamed user-facing Revenue Split surfaces to Revenue Split Plan.
+- Added Accounting-only MVP copy so the current feature does not imply onchain disbursement.
+- Added settlement split architecture docs for the future ArcFlowSplitter contract path.
+- Added a starter `ArcFlowSplitter.sol` contract for approve-and-split settlement.
+
+## v0.2.0 - Revenue Split Plan Template
+
+- Added accounting-first revenue split plan payment intents.
 - Added inline SDK split input with recipient labels, addresses, and percentages.
 - Computed deterministic raw-USDC allocations that sum exactly to the paid total.
-- Rendered split breakdowns and a no-auto-disbursement disclaimer on receipts.
+- Rendered split breakdowns and an accounting-only/no-auto-disbursement disclaimer on receipts.
 - Included structured split metadata in signed webhook payloads and flow logs.
 - Added validation coverage for split percentages, recipient addresses, zero/negative values, exact allocation sums, and rounding remainders.
 

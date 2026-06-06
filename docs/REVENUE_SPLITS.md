@@ -1,10 +1,10 @@
-# Revenue Splits
+# Revenue Split Plans
 
-Revenue Split is ArcFlow's accounting-first split payment template.
+Revenue Split Plan is ArcFlow's accounting-first split payment template.
 
 It lets a developer create a payment intent where the customer pays one total USDC amount to a settlement wallet. ArcFlow verifies the total payment, computes deterministic recipient allocations, renders the split breakdown on the receipt, includes structured split metadata in webhooks, and records the allocation plan in the payment trail.
 
-Automatic disbursement is not enabled in this MVP.
+Automatic disbursement is not enabled in this MVP. The current flow records the intended allocation; it does not split funds onchain.
 
 ## What It Does
 
@@ -24,7 +24,7 @@ Automatic disbursement is not enabled in this MVP.
 
 ## Dashboard Template
 
-Template name: `Revenue Split`
+Template name: `Revenue Split Plan`
 
 Default example:
 
@@ -46,7 +46,7 @@ Recorded split plan:
 - Platform: 1 USDC
 ```
 
-The dashboard copy makes the boundary explicit: this MVP records the split plan but does not yet auto-disburse funds.
+The dashboard copy makes the boundary explicit: this MVP records the split plan but does not yet execute onchain disbursement.
 
 ## SDK Example
 
@@ -59,7 +59,7 @@ const arcflow = new ArcFlow({
 
 const intent = await arcflow.paymentIntents.create({
   amount: "10",
-  description: "Revenue split demo",
+  description: "Revenue split plan demo",
   template: "revenue_split",
   settlementReceiver: "0x0000000000000000000000000000000000000001",
   split: [
@@ -98,7 +98,7 @@ For split intents, it also shows the accounting plan:
 
 ```txt
 Split breakdown
-Revenue Split
+Revenue Split Plan
 Collect to 0x0000000000000000000000000000000000000001
 
 Creator      7.00 USDC - 70%
@@ -128,7 +128,7 @@ Split breakdown records the intended allocation for this payment. Automatic disb
     "settlementReceiver": "0x0000000000000000000000000000000000000001",
     "split": {
       "splitId": "inline_revenue_split",
-      "name": "Revenue Split",
+      "name": "Revenue Split Plan",
       "settlementReceiver": "0x0000000000000000000000000000000000000001",
       "totalAmount": "10000000",
       "allocations": [
@@ -201,5 +201,26 @@ After settlement, ArcFlow records:
 
 ```txt
 split.recorded
-Recorded split plan for Revenue Split: 70% to Creator, 20% to Contributor, 10% to Platform.
+Recorded split plan for Revenue Split Plan: 70% to Creator, 20% to Contributor, 10% to Platform.
 ```
+
+## Upgrade Path: Settlement Splits
+
+To upgrade Revenue Split Plan into a real settlement split, ArcFlow needs a contract-mediated payment path. Plain ERC-20 transfers cannot automatically split funds. If a payer transfers USDC directly to a wallet, no recipient disbursement happens unless another transaction later moves funds.
+
+The target flow is:
+
+```txt
+Create Revenue Split Plan intent
+-> ArcFlow computes split plan
+-> Checkout detects template = revenue_split
+-> Wallet approves ArcFlowSplitter for total USDC
+-> Wallet calls ArcFlowSplitter.payAndSplit(intentId, recipients, amounts)
+-> Splitter pulls USDC from payer
+-> Splitter transfers exact amounts to recipients
+-> Splitter emits SplitSettled
+-> ArcFlow verifies SplitSettled plus recipient Transfer events
+-> Receipt says "Split executed"
+```
+
+See [SETTLEMENT_SPLITTER.md](SETTLEMENT_SPLITTER.md) for the contract architecture.

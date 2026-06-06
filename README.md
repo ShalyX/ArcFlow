@@ -395,14 +395,14 @@ Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, dup
 - Agent spend controls: policy wallets, per-action caps, and spend logs.
 - Credibility: payment and fulfillment history as a reputation graph.
 
-## Revenue Split SDK Example
+## Revenue Split Plan SDK Example
 
-See [docs/REVENUE_SPLITS.md](docs/REVENUE_SPLITS.md) for the full Revenue Split guide, including validation rules, receipt output, webhook metadata, and allocation math.
+See [docs/REVENUE_SPLITS.md](docs/REVENUE_SPLITS.md) for the full Revenue Split Plan guide, including validation rules, receipt output, webhook metadata, and allocation math.
 
 ```ts
 await arcflow.paymentIntents.create({
   amount: "10",
-  description: "Revenue split demo",
+  description: "Revenue split plan demo",
   template: "revenue_split",
   settlementReceiver: "0x...",
   split: [
@@ -413,7 +413,9 @@ await arcflow.paymentIntents.create({
 });
 ```
 
-Revenue Split records the intended accounting allocation on the intent, receipt, webhook, and logs. It does not auto-disburse funds in this MVP.
+Revenue Split Plan records the intended accounting allocation on the intent, receipt, webhook, and logs. It does not execute onchain disbursement in this MVP.
+
+The settlement-split upgrade path is documented in [docs/SETTLEMENT_SPLITTER.md](docs/SETTLEMENT_SPLITTER.md). That path requires an ArcFlowSplitter contract because plain ERC-20 transfers cannot automatically fan funds out to multiple recipients.
 
 ## Current Limitations
 

@@ -407,7 +407,7 @@ describe("payment intent API guards", () => {
       settlementReceiver: splitSettlementReceiver,
       description: "Revenue split demo",
       template: "revenue_split",
-      metadata: { splitName: "Revenue Split" },
+      metadata: { splitName: "Revenue Split Plan" },
       split: [
         { label: "Creator", recipient: receiver, percentage: 70 },
         { label: "Contributor", recipient: wrongReceiver, percentage: 20 },
@@ -416,7 +416,7 @@ describe("payment intent API guards", () => {
     });
     const sdkPlan = JSON.parse(sdkIntent.metadata.splitPlan);
     assert.equal(sdkIntent.template, "revenue_split");
-    assert.equal(sdkPlan.name, "Revenue Split");
+    assert.equal(sdkPlan.name, "Revenue Split Plan");
     assert.deepEqual(sdkPlan.allocations.map((allocation: { label: string; amount: string; shareBps: number }) => ({
       label: allocation.label,
       amount: allocation.amount,

@@ -60,7 +60,7 @@ const templateOptions: Array<{ key: TemplateKey; title: string; copy: string; ic
   { key: "access-unlock", title: "Access unlock", copy: "Confirm payment, send webhook, unlock API or gated content.", icon: LockKeyhole },
   { key: "invoice", title: "Invoice", copy: "Attach customer and invoice metadata to a verifiable payment.", icon: FileText },
   { key: "split-payment", title: "Split payment", copy: "Attach an accounting split to a verified payment.", icon: Split },
-  { key: "revenue_split", title: "Revenue Split", copy: "Record creator, contributor, and platform allocations.", icon: Split }
+  { key: "revenue_split", title: "Revenue Split Plan", copy: "Accounting-only MVP for creator, contributor, and platform allocations.", icon: Split }
 ];
 
 const revenueSplitTemplate = {
@@ -970,9 +970,9 @@ function IntentCreator({ onCreated }: { onCreated: () => Promise<void> }) {
         amount: "10.00",
         receiver: revenueSplitTemplate.settlementReceiver,
         settlementReceiver: revenueSplitTemplate.settlementReceiver,
-        description: "Revenue split demo",
+        description: "Revenue split plan demo",
         template,
-        metadata: { splitName: "Revenue Split" },
+        metadata: { splitName: "Revenue Split Plan" },
         split: revenueSplitTemplate.split
       });
       return;
@@ -1025,7 +1025,8 @@ function IntentCreator({ onCreated }: { onCreated: () => Promise<void> }) {
       </label>
       {form.template === "revenue_split" && form.split && (
         <div className="revenue-template">
-          <strong>Revenue Split</strong>
+          <strong>Revenue Split Plan</strong>
+          <small>Accounting-only MVP</small>
           <span>Settlement wallet receives: {form.amount} USDC</span>
           <span>Recorded split plan:</span>
           <div className="split-receiver-list">
@@ -1036,7 +1037,7 @@ function IntentCreator({ onCreated }: { onCreated: () => Promise<void> }) {
               </div>
             ))}
           </div>
-          <small>This MVP records the split plan but does not yet auto-disburse funds.</small>
+          <small>This MVP records the split plan but does not execute onchain disbursement yet.</small>
         </div>
       )}
       {error && <div className="error">{error}</div>}
@@ -1055,7 +1056,7 @@ const arcflow = new ArcFlow({ apiKey: process.env.ARCFLOW_KEY });
 
 const intent = await arcflow.paymentIntents.create({
   amount: "10",
-  description: "Revenue split demo",
+  description: "Revenue split plan demo",
   template: "revenue_split",
   settlementReceiver: "0x...",
   split: [
