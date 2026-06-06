@@ -74,7 +74,7 @@ The checkout UI should show two wallet steps:
 
 ## Verification Changes
 
-Current verifier checks:
+Current transfer verifier checks:
 
 - Correct Arc Testnet chain.
 - Successful transaction.
@@ -83,7 +83,7 @@ Current verifier checks:
 - Correct total amount.
 - Matching ERC-20 `Transfer` event.
 
-Settlement split verifier should check:
+Executable split verifier checks:
 
 - Correct Arc Testnet chain.
 - Successful transaction.
@@ -96,6 +96,8 @@ Settlement split verifier should check:
 - USDC `Transfer` logs exist from splitter to each recipient for each exact amount.
 - Tx hash has not already been used.
 - Intent is still pending before settlement.
+
+The pure log matcher now lives in `findMatchingExecutableSplit(...)`; checkout wiring will call the async transaction verifier once the wallet path submits `payAndSplit(...)`.
 
 ## Receipt/Webhook Copy
 

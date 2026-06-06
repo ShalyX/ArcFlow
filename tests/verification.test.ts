@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { encodeAbiParameters, encodeEventTopics, erc20Abi, type Hex } from "viem";
-import { findMatchingUsdcTransfer, type TransferLogCandidate } from "../server/arcVerifier";
+import { arcFlowIntentIdHash, findMatchingExecutableSplit, findMatchingUsdcTransfer, type TransferLogCandidate } from "../server/arcVerifier";
 import { ARC_TESTNET } from "../src/shared/arc";
 import { ArcFlow } from "../packages/sdk/src/index";
 import { signArcFlowWebhook, verifyArcFlowWebhook } from "../packages/sdk/src/webhooks";
@@ -14,14 +14,42 @@ const payer = "0x1111111111111111111111111111111111111111";
 const wrongReceiver = "0x0000000000000000000000000000000000000002";
 const wrongToken = "0x2222222222222222222222222222222222222222";
 const splitSettlementReceiver = "0x0000000000000000000000000000000000000003";
+const splitterAddress = "0x3333333333333333333333333333333333333333";
 const expectedAmount = "10000000";
+
+const splitterAbi = [
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "intentId", type: "bytes32" },
+      { indexed: true, name: "payer", type: "address" },
+      { indexed: false, name: "totalAmount", type: "uint256" },
+      { indexed: false, name: "recipients", type: "address[]" },
+      { indexed: false, name: "amounts", type: "uint256[]" }
+    ],
+    name: "SplitPaid",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "intentId", type: "bytes32" },
+      { indexed: true, name: "recipient", type: "address" },
+      { indexed: false, name: "amount", type: "uint256" }
+    ],
+    name: "SplitTransfer",
+    type: "event"
+  }
+] as const;
 
 function transferLog({
   token = ARC_TESTNET.usdcAddress,
+  from = payer,
   to = receiver,
   value = expectedAmount
 }: {
   token?: `0x${string}`;
+  from?: `0x${string}`;
   to?: `0x${string}`;
   value?: string;
 } = {}): TransferLogCandidate {
@@ -29,7 +57,7 @@ function transferLog({
     abi: erc20Abi,
     eventName: "Transfer",
     args: {
-      from: payer,
+      from,
       to
     }
   });
@@ -40,6 +68,99 @@ function transferLog({
     topics,
     data
   };
+}
+
+function splitPlan(totalAmount = expectedAmount) {
+  return {
+    splitId: "inline_revenue_split",
+    name: "Revenue Split Plan",
+    settlementReceiver: splitSettlementReceiver,
+    totalAmount,
+    allocations: [
+      { label: "Creator", address: receiver, shareBps: 7000, amount: "7000000" },
+      { label: "Contributor", address: wrongReceiver, shareBps: 2000, amount: "2000000" },
+      { label: "Platform", address: splitSettlementReceiver, shareBps: 1000, amount: "1000000" }
+    ]
+  } as const;
+}
+
+function splitPaidLog({
+  paymentIntentId = "pi_exec_split",
+  contract = splitterAddress,
+  totalAmount = expectedAmount,
+  recipients = [receiver, wrongReceiver, splitSettlementReceiver],
+  amounts = ["7000000", "2000000", "1000000"]
+}: {
+  paymentIntentId?: string;
+  contract?: `0x${string}`;
+  totalAmount?: string;
+  recipients?: `0x${string}`[];
+  amounts?: string[];
+} = {}): TransferLogCandidate {
+  const intentId = arcFlowIntentIdHash(paymentIntentId);
+  const topics = encodeEventTopics({
+    abi: splitterAbi,
+    eventName: "SplitPaid",
+    args: {
+      intentId,
+      payer
+    }
+  });
+  const data = encodeAbiParameters(
+    [{ type: "uint256" }, { type: "address[]" }, { type: "uint256[]" }],
+    [BigInt(totalAmount), recipients, amounts.map(BigInt)]
+  );
+
+  return {
+    address: contract,
+    topics,
+    data
+  };
+}
+
+function splitTransferLog({
+  paymentIntentId = "pi_exec_split",
+  contract = splitterAddress,
+  recipient,
+  amount
+}: {
+  paymentIntentId?: string;
+  contract?: `0x${string}`;
+  recipient: `0x${string}`;
+  amount: string;
+}): TransferLogCandidate {
+  const topics = encodeEventTopics({
+    abi: splitterAbi,
+    eventName: "SplitTransfer",
+    args: {
+      intentId: arcFlowIntentIdHash(paymentIntentId),
+      recipient
+    }
+  });
+  const data = encodeAbiParameters([{ type: "uint256" }], [BigInt(amount)]);
+
+  return {
+    address: contract,
+    topics,
+    data
+  };
+}
+
+function executableSplitLogs(paymentIntentId = "pi_exec_split") {
+  const plan = splitPlan();
+  return [
+    splitPaidLog({ paymentIntentId }),
+    ...plan.allocations.map((allocation) => splitTransferLog({
+      paymentIntentId,
+      recipient: allocation.address,
+      amount: allocation.amount
+    })),
+    ...plan.allocations.map((allocation) => transferLog({
+      from: splitterAddress,
+      to: allocation.address,
+      value: allocation.amount
+    }))
+  ];
 }
 
 describe("USDC transfer matching", () => {
@@ -88,6 +209,96 @@ describe("USDC transfer matching", () => {
     });
 
     assert.equal(match, null);
+  });
+});
+
+describe("executable split matching", () => {
+  const paymentIntentId = "pi_exec_split";
+
+  it("matches SplitPaid, SplitTransfer, and exact recipient USDC transfers", () => {
+    const match = findMatchingExecutableSplit({
+      logs: executableSplitLogs(paymentIntentId),
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match?.payer, payer);
+    assert.equal(match?.receiver, splitterAddress);
+    assert.equal(match?.amount, expectedAmount);
+    assert.equal(match?.splitterAddress, splitterAddress);
+    assert.equal(match?.splitPlan.allocations.length, 3);
+  });
+
+  it("rejects wrong splitter contract address", () => {
+    const match = findMatchingExecutableSplit({
+      logs: executableSplitLogs(paymentIntentId),
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress: "0x4444444444444444444444444444444444444444",
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects wrong SplitPaid intent id", () => {
+    const match = findMatchingExecutableSplit({
+      logs: executableSplitLogs("pi_other"),
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects missing SplitTransfer recipient event", () => {
+    const logs = executableSplitLogs(paymentIntentId);
+    logs.splice(2, 1);
+    const match = findMatchingExecutableSplit({
+      logs,
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects missing recipient USDC transfer", () => {
+    const logs = executableSplitLogs(paymentIntentId).slice(0, -1);
+    const match = findMatchingExecutableSplit({
+      logs,
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects split plans whose raw allocations do not sum to total", () => {
+    assert.throws(
+      () => findMatchingExecutableSplit({
+        logs: executableSplitLogs(paymentIntentId),
+        paymentIntentId,
+        splitPlan: {
+          ...splitPlan(),
+          allocations: [
+            { label: "Creator", address: receiver, shareBps: 7000, amount: "7000000" },
+            { label: "Contributor", address: wrongReceiver, shareBps: 2000, amount: "2000000" }
+          ]
+        },
+        splitterAddress,
+        usdcAddress: ARC_TESTNET.usdcAddress
+      }),
+      /do not sum/
+    );
   });
 });
 
