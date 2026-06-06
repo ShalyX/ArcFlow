@@ -1,5 +1,28 @@
 # Release Notes
 
+## ArcFlow v0.2.0 - Revenue Split Template
+
+ArcFlow now supports accounting-first revenue split payment intents. Split intents compute recipient allocations, render split breakdowns on receipts, include structured split metadata in webhooks, and log the planned allocation trail.
+
+## What Changed
+
+- Added the `Revenue Split` dashboard template.
+- Added SDK support for inline `split` recipients with percentage allocations.
+- Verified split payments by total amount to the settlement wallet.
+- Computed raw USDC allocations deterministically, including predictable rounding remainder handling.
+- Added receipt copy explaining that automatic disbursement is not enabled in this MVP.
+- Expanded regression coverage for split validation and accounting metadata.
+
+## Verification
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+Current expected test count: 13 passing tests.
+
 ## ArcFlow v0.1.3 - Hosted Checkout Project Settlement Fix
 
 ArcFlow v0.1.3 tightens the platform boundary around hosted checkout while keeping project-scoped merchant infrastructure intact.

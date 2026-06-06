@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import "dotenv/config";
 import express from "express";
 import { parseUsdc } from "../src/shared/arc";
-import type { ConfirmPaymentInput, CreateIntentInput, CreateSplitInput, Split, SplitAllocation, SplitPlan } from "../src/shared/types";
+import type { ConfirmPaymentInput, CreateIntentInput, CreateIntentSplitRecipient, CreateSplitInput, Split, SplitAllocation, SplitPlan, SplitReceiver } from "../src/shared/types";
 import { validateIntentAddress, verifyArcUsdcTransfer } from "./arcVerifier";
 import {
   addLog,
@@ -115,14 +115,15 @@ app.post("/api/payment-intents", requireApiKey, (request, response) => {
 
   try {
     if (!body.description?.trim()) throw new Error("Description is required.");
-    if (!validateIntentAddress(body.receiver)) throw new Error("Receiver must be a valid Arc EVM address.");
     const amount = parseUsdc(body.amount);
-    const metadata = resolveIntentMetadata(body.metadata, projectId, body.receiver, amount);
+    const receiver = resolveIntentReceiver(body);
+    if (!validateIntentAddress(receiver)) throw new Error("Receiver must be a valid Arc EVM address.");
+    const metadata = resolveIntentMetadata(body.metadata, projectId, receiver, amount, body.split);
 
     const intent = createPaymentIntent({
       projectId,
       amount,
-      receiver: body.receiver,
+      receiver,
       description: body.description.trim(),
       template: body.template || "payment-link",
       metadata
@@ -418,9 +419,23 @@ function parseWebhookInput(body: unknown, partial: boolean) {
   return result;
 }
 
-function resolveIntentMetadata(metadata: Record<string, string> | undefined, projectId: string, receiver: `0x${string}`, amount: string) {
+function resolveIntentReceiver(body: CreateIntentInput) {
+  const receiver = body.receiver || body.settlementReceiver;
+  if (!receiver) throw new Error("Receiver is required.");
+  return receiver;
+}
+
+function resolveIntentMetadata(
+  metadata: Record<string, string> | undefined,
+  projectId: string,
+  receiver: `0x${string}`,
+  amount: string,
+  inlineSplit?: CreateIntentSplitRecipient[]
+) {
   const baseMetadata = metadata || {};
-  const splitPlan = resolveSplitPlan(baseMetadata, projectId, receiver, amount);
+  const splitPlan = inlineSplit !== undefined
+    ? buildInlineSplitPlan(baseMetadata, inlineSplit, receiver, amount)
+    : resolveSplitPlan(baseMetadata, projectId, receiver, amount);
   if (!splitPlan) return baseMetadata;
   return {
     ...baseMetadata,
@@ -428,6 +443,53 @@ function resolveIntentMetadata(metadata: Record<string, string> | undefined, pro
     settlementReceiver: splitPlan.settlementReceiver,
     splitPlan: JSON.stringify(splitPlan)
   };
+}
+
+function buildInlineSplitPlan(
+  metadata: Record<string, string>,
+  recipients: CreateIntentSplitRecipient[],
+  settlementReceiver: `0x${string}`,
+  amount: string
+) {
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    throw new Error("Add at least one split recipient.");
+  }
+  if (!validateIntentAddress(settlementReceiver)) {
+    throw new Error("Settlement receiver must be a valid EVM address.");
+  }
+
+  const receivers = recipients.map((recipient): SplitReceiver => {
+    if (!validateIntentAddress(recipient.recipient)) {
+      throw new Error("Each split recipient must be a valid EVM address.");
+    }
+    if (!Number.isFinite(recipient.percentage) || recipient.percentage <= 0) {
+      throw new Error("Each split percentage must be positive.");
+    }
+    const rawShareBps = recipient.percentage * 100;
+    const shareBps = Math.round(rawShareBps);
+    if (Math.abs(rawShareBps - shareBps) > 1e-9) {
+      throw new Error("Split percentages support up to two decimal places.");
+    }
+    return {
+      label: recipient.label?.trim() || undefined,
+      address: recipient.recipient,
+      shareBps
+    };
+  });
+
+  const totalBps = receivers.reduce((sum, recipient) => sum + recipient.shareBps, 0);
+  if (totalBps !== 10000) {
+    throw new Error("Split percentages must equal 100%.");
+  }
+
+  return buildSplitPlan({
+    id: metadata.splitId || "inline_revenue_split",
+    projectId: "",
+    name: metadata.splitName || "Revenue Split",
+    settlementReceiver,
+    receivers,
+    createdAt: new Date().toISOString()
+  }, amount);
 }
 
 function resolveSplitPlan(metadata: Record<string, string>, projectId: string, receiver: `0x${string}`, amount: string) {

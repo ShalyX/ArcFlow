@@ -1016,7 +1016,30 @@ code {
   overflow-wrap: anywhere;
 }
 
+.receipt-split small,
+.revenue-template small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .receipt-split .split-receiver-list div {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.revenue-template {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 9px;
+  background: #fffefa;
+}
+
+.revenue-template > span {
+  color: var(--muted);
+}
+
+.revenue-template .split-receiver-list div {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 

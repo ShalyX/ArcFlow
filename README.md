@@ -395,6 +395,24 @@ Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, dup
 - Agent spend controls: policy wallets, per-action caps, and spend logs.
 - Credibility: payment and fulfillment history as a reputation graph.
 
+## Revenue Split SDK Example
+
+```ts
+await arcflow.paymentIntents.create({
+  amount: "10",
+  description: "Revenue split demo",
+  template: "revenue_split",
+  settlementReceiver: "0x...",
+  split: [
+    { label: "Creator", recipient: "0x...", percentage: 70 },
+    { label: "Contributor", recipient: "0x...", percentage: 20 },
+    { label: "Platform", recipient: "0x...", percentage: 10 }
+  ]
+});
+```
+
+Revenue Split records the intended accounting allocation on the intent, receipt, webhook, and logs. It does not auto-disburse funds in this MVP.
+
 ## Current Limitations
 
 - Arc Testnet only.

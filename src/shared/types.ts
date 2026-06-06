@@ -64,6 +64,12 @@ export type SplitReceiver = {
   label?: string;
 };
 
+export type CreateIntentSplitRecipient = {
+  label?: string;
+  recipient: `0x${string}`;
+  percentage: number;
+};
+
 export type SplitAllocation = SplitReceiver & {
   amount: string;
 };
@@ -123,7 +129,7 @@ export type CreatedProject = {
   apiKey: CreatedApiKey;
 };
 
-export type TemplateKey = "payment-link" | "access-unlock" | "invoice" | "split-payment";
+export type TemplateKey = "payment-link" | "access-unlock" | "invoice" | "split-payment" | "revenue_split";
 
 export type DashboardState = {
   currentProjectId: string;
@@ -139,10 +145,12 @@ export type DashboardState = {
 
 export type CreateIntentInput = {
   amount: string;
-  receiver: `0x${string}`;
+  receiver?: `0x${string}`;
+  settlementReceiver?: `0x${string}`;
   description: string;
   template: TemplateKey;
   metadata?: Record<string, string>;
+  split?: CreateIntentSplitRecipient[];
 };
 
 export type CreateSplitInput = {

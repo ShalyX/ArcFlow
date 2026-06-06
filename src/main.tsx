@@ -59,8 +59,18 @@ const templateOptions: Array<{ key: TemplateKey; title: string; copy: string; ic
   { key: "payment-link", title: "Payment link", copy: "Hosted checkout and receipt for a one-time USDC payment.", icon: Link2 },
   { key: "access-unlock", title: "Access unlock", copy: "Confirm payment, send webhook, unlock API or gated content.", icon: LockKeyhole },
   { key: "invoice", title: "Invoice", copy: "Attach customer and invoice metadata to a verifiable payment.", icon: FileText },
-  { key: "split-payment", title: "Split payment", copy: "Attach an accounting split to a verified payment.", icon: Split }
+  { key: "split-payment", title: "Split payment", copy: "Attach an accounting split to a verified payment.", icon: Split },
+  { key: "revenue_split", title: "Revenue Split", copy: "Record creator, contributor, and platform allocations.", icon: Split }
 ];
+
+const revenueSplitTemplate = {
+  settlementReceiver: "0x0000000000000000000000000000000000000001" as `0x${string}`,
+  split: [
+    { label: "Creator", recipient: "0x0000000000000000000000000000000000000002" as `0x${string}`, percentage: 70 },
+    { label: "Contributor", recipient: "0x0000000000000000000000000000000000000003" as `0x${string}`, percentage: 20 },
+    { label: "Platform", recipient: "0x0000000000000000000000000000000000000004" as `0x${string}`, percentage: 10 }
+  ]
+};
 
 const roadmap = [
   { title: "Splits", icon: Split, copy: "Record who should receive what after settlement." },
@@ -954,6 +964,22 @@ function IntentCreator({ onCreated }: { onCreated: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  function setTemplate(template: TemplateKey) {
+    if (template === "revenue_split") {
+      setForm({
+        amount: "10.00",
+        receiver: revenueSplitTemplate.settlementReceiver,
+        settlementReceiver: revenueSplitTemplate.settlementReceiver,
+        description: "Revenue split demo",
+        template,
+        metadata: { splitName: "Revenue Split" },
+        split: revenueSplitTemplate.split
+      });
+      return;
+    }
+    setForm({ ...form, template });
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -988,15 +1014,31 @@ function IntentCreator({ onCreated }: { onCreated: () => Promise<void> }) {
         </label>
         <label>
           Template
-          <select value={form.template} onChange={(event) => setForm({ ...form, template: event.target.value as TemplateKey })}>
+          <select value={form.template} onChange={(event) => setTemplate(event.target.value as TemplateKey)}>
             {templateOptions.map((template) => <option value={template.key} key={template.key}>{template.title}</option>)}
           </select>
         </label>
       </div>
       <label>
         Receiver
-        <input value={form.receiver} onChange={(event) => setForm({ ...form, receiver: event.target.value as `0x${string}` })} />
+        <input value={form.receiver || ""} onChange={(event) => setForm({ ...form, receiver: event.target.value as `0x${string}` })} />
       </label>
+      {form.template === "revenue_split" && form.split && (
+        <div className="revenue-template">
+          <strong>Revenue Split</strong>
+          <span>Settlement wallet receives: {form.amount} USDC</span>
+          <span>Recorded split plan:</span>
+          <div className="split-receiver-list">
+            {form.split.map((recipient) => (
+              <div key={`${recipient.recipient}-${recipient.percentage}`}>
+                <span>{recipient.label}</span>
+                <strong>{formatUsdc(((BigInt(Math.round(Number.parseFloat(form.amount) * 1_000_000)) * BigInt(Math.round(recipient.percentage * 100))) / 10000n).toString())} USDC · {recipient.percentage}%</strong>
+              </div>
+            ))}
+          </div>
+          <small>This MVP records the split plan but does not yet auto-disburse funds.</small>
+        </div>
+      )}
       {error && <div className="error">{error}</div>}
       <button className="primary-button" disabled={busy}>
         {busy ? <Loader2 className="spin" size={18} /> : <ArrowRight size={18} />}
@@ -1012,10 +1054,15 @@ function SdkPanel() {
 const arcflow = new ArcFlow({ apiKey: process.env.ARCFLOW_KEY });
 
 const intent = await arcflow.paymentIntents.create({
-  amount: "10.00",
-  receiver: "0x...",
-  template: "access-unlock",
-  metadata: { customerId: "cus_123" }
+  amount: "10",
+  description: "Revenue split demo",
+  template: "revenue_split",
+  settlementReceiver: "0x...",
+  split: [
+    { label: "Creator", recipient: "0x...", percentage: 70 },
+    { label: "Contributor", recipient: "0x...", percentage: 20 },
+    { label: "Platform", recipient: "0x...", percentage: 10 }
+  ]
 });`;
 
   return (
@@ -1241,6 +1288,7 @@ function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: D
                     </div>
                   ))}
                 </div>
+                <small>Split breakdown records the intended allocation for this payment. Automatic disbursement is not enabled in this MVP.</small>
               </div>
             )}
             <div className="receipt-actions">

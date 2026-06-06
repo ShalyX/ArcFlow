@@ -401,6 +401,32 @@ describe("payment intent API guards", () => {
     ));
 
     const projectClient = new ArcFlow({ baseUrl: apiBase, apiKey });
+    const sdkIntent = await projectClient.paymentIntents.create({
+      amount: "10",
+      receiver: splitSettlementReceiver,
+      settlementReceiver: splitSettlementReceiver,
+      description: "Revenue split demo",
+      template: "revenue_split",
+      metadata: { splitName: "Revenue Split" },
+      split: [
+        { label: "Creator", recipient: receiver, percentage: 70 },
+        { label: "Contributor", recipient: wrongReceiver, percentage: 20 },
+        { label: "Platform", recipient: splitSettlementReceiver, percentage: 10 }
+      ]
+    });
+    const sdkPlan = JSON.parse(sdkIntent.metadata.splitPlan);
+    assert.equal(sdkIntent.template, "revenue_split");
+    assert.equal(sdkPlan.name, "Revenue Split");
+    assert.deepEqual(sdkPlan.allocations.map((allocation: { label: string; amount: string; shareBps: number }) => ({
+      label: allocation.label,
+      amount: allocation.amount,
+      shareBps: allocation.shareBps
+    })), [
+      { label: "Creator", amount: "7000000", shareBps: 7000 },
+      { label: "Contributor", amount: "2000000", shareBps: 2000 },
+      { label: "Platform", amount: "1000000", shareBps: 1000 }
+    ]);
+
     const sdkSplit = await projectClient.splits.create({
       name: "SDK split",
       settlementReceiver: splitSettlementReceiver,
@@ -410,6 +436,61 @@ describe("payment intent API guards", () => {
       ]
     });
     assert.equal(sdkSplit.name, "SDK split");
+  });
+
+  it("validates inline split inputs and deterministic raw allocations", async () => {
+    const baseIntent = {
+      amount: "0.01",
+      receiver: splitSettlementReceiver,
+      settlementReceiver: splitSettlementReceiver,
+      description: "Rounding split",
+      template: "revenue_split",
+      metadata: { splitName: "Rounding Split" }
+    };
+
+    const badTotal = await postRaw(`${apiBase}/payment-intents`, {
+      ...baseIntent,
+      split: [
+        { label: "Creator", recipient: receiver, percentage: 70 },
+        { label: "Contributor", recipient: wrongReceiver, percentage: 20 }
+      ]
+    }, apiKey);
+    assert.equal(badTotal.status, 400);
+    assert.match(badTotal.body.error, /must equal 100%/);
+
+    const badAddress = await postRaw(`${apiBase}/payment-intents`, {
+      ...baseIntent,
+      split: [
+        { label: "Creator", recipient: "0xnope", percentage: 70 },
+        { label: "Contributor", recipient: wrongReceiver, percentage: 30 }
+      ]
+    }, apiKey);
+    assert.equal(badAddress.status, 400);
+    assert.match(badAddress.body.error, /valid EVM address/);
+
+    for (const percentage of [0, -1, Number.NaN, 33.333]) {
+      const invalid = await postRaw(`${apiBase}/payment-intents`, {
+        ...baseIntent,
+        split: [
+          { label: "Creator", recipient: receiver, percentage },
+          { label: "Contributor", recipient: wrongReceiver, percentage: 100 - Number(percentage || 0) }
+        ]
+      }, apiKey);
+      assert.equal(invalid.status, 400);
+    }
+
+    const rounded = await post(`${apiBase}/payment-intents`, {
+      ...baseIntent,
+      split: [
+        { label: "Creator", recipient: receiver, percentage: 33.33 },
+        { label: "Contributor", recipient: wrongReceiver, percentage: 33.33 },
+        { label: "Platform", recipient: splitSettlementReceiver, percentage: 33.34 }
+      ]
+    }, apiKey);
+    const splitPlan = JSON.parse(rounded.metadata.splitPlan);
+    const allocationAmounts = splitPlan.allocations.map((allocation: { amount: string }) => allocation.amount);
+    assert.deepEqual(allocationAmounts, ["3333", "3333", "3334"]);
+    assert.equal(allocationAmounts.reduce((sum: bigint, amount: string) => sum + BigInt(amount), 0n).toString(), rounded.amount);
   });
 });
 

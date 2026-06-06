@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.0 - Revenue Split Template
+
+- Added accounting-first revenue split payment intents.
+- Added inline SDK split input with recipient labels, addresses, and percentages.
+- Computed deterministic raw-USDC allocations that sum exactly to the paid total.
+- Rendered split breakdowns and a no-auto-disbursement disclaimer on receipts.
+- Included structured split metadata in signed webhook payloads and flow logs.
+- Added validation coverage for split percentages, recipient addresses, zero/negative values, exact allocation sums, and rounding remainders.
+
 ## v0.1.3 - Hosted Checkout Project Settlement Fix
 
 - Added authenticated SDK helpers for projects, API keys, webhooks, webhook delivery retry, and payment intents.
