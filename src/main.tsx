@@ -870,19 +870,21 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
     }
   }
 
-  async function createSplitIntent(splitId: string, settlementReceiver: string) {
-    setBusy(`intent-${splitId}`);
+  async function createSplitIntent(splitId: string, settlementReceiver: string, executable = false) {
+    setBusy(`${executable ? "executable" : "intent"}-${splitId}`);
     setError("");
     try {
       await createPaymentIntent({
         amount: "10.00",
-        receiver: settlementReceiver as `0x${string}`,
-        description: "Split payment checkout",
-        template: "split-payment",
+        receiver: (executable ? configuredSplitterAddress : settlementReceiver) as `0x${string}`,
+        settlementReceiver: settlementReceiver as `0x${string}`,
+        description: executable ? "Executable split checkout" : "Split payment checkout",
+        template: executable ? "revenue_split_executable" : "split-payment",
         metadata: {
           splitId,
           settlementReceiver,
-          shares: "record-only"
+          shares: executable ? "executed-onchain" : "record-only",
+          splitMode: executable ? "executable" : "accounting"
         }
       });
       await onRefresh();
@@ -955,9 +957,13 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
               ))}
             </div>
             <div className="webhook-actions">
-              <button className="tiny-button" type="button" onClick={() => createSplitIntent(split.id, split.settlementReceiver)} disabled={Boolean(busy)}>
+              <button className="tiny-button" type="button" onClick={() => createSplitIntent(split.id, split.settlementReceiver, false)} disabled={Boolean(busy)}>
                 {busy === `intent-${split.id}` ? <Loader2 className="spin" size={15} /> : <Send size={15} />}
-                Create split intent
+                Create plan intent
+              </button>
+              <button className="tiny-button" type="button" onClick={() => createSplitIntent(split.id, split.settlementReceiver, true)} disabled={Boolean(busy)}>
+                {busy === `executable-${split.id}` ? <Loader2 className="spin" size={15} /> : <Wallet size={15} />}
+                Create executable intent
               </button>
             </div>
           </article>

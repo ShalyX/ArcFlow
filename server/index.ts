@@ -118,7 +118,10 @@ app.post("/api/payment-intents", requireApiKey, (request, response) => {
     const amount = parseUsdc(body.amount);
     const receiver = resolveIntentReceiver(body);
     if (!validateIntentAddress(receiver)) throw new Error("Receiver must be a valid Arc EVM address.");
-    const metadata = resolveIntentMetadata(body.metadata, projectId, receiver, amount, body.split);
+    const splitPlanReceiver = body.template === "revenue_split_executable"
+      ? body.settlementReceiver || body.receiver || receiver
+      : receiver;
+    const metadata = resolveIntentMetadata(body.metadata, projectId, splitPlanReceiver, amount, body.split);
 
     const intent = createPaymentIntent({
       projectId,

@@ -827,6 +827,45 @@ describe("payment intent API guards", () => {
     ]);
   });
 
+  it("creates executable intents from saved split plans without using the collection wallet as receiver", async () => {
+    const split = await post(`${apiBase}/splits`, {
+      name: "Saved executable split",
+      settlementReceiver: receiver,
+      receivers: [
+        { label: "Creator", address: receiver, shareBps: 7000 },
+        { label: "Partner", address: wrongReceiver, shareBps: 3000 }
+      ]
+    }, apiKey);
+
+    const intent = await post(`${apiBase}/payment-intents`, {
+      amount: "10.00",
+      receiver: splitterAddress,
+      settlementReceiver: split.settlementReceiver,
+      description: "Executable split checkout",
+      template: "revenue_split_executable",
+      metadata: {
+        splitId: split.id,
+        settlementReceiver: split.settlementReceiver,
+        splitMode: "executable"
+      }
+    }, apiKey);
+
+    const plan = JSON.parse(intent.metadata.splitPlan);
+    assert.equal(intent.template, "revenue_split_executable");
+    assert.equal(intent.receiver, splitterAddress);
+    assert.equal(plan.splitId, split.id);
+    assert.equal(plan.settlementReceiver, split.settlementReceiver);
+    assert.deepEqual(plan.allocations.map((allocation: { label: string; address: string; amount: string; shareBps: number }) => ({
+      label: allocation.label,
+      address: allocation.address,
+      amount: allocation.amount,
+      shareBps: allocation.shareBps
+    })), [
+      { label: "Creator", address: receiver, amount: "7000000", shareBps: 7000 },
+      { label: "Partner", address: wrongReceiver, amount: "3000000", shareBps: 3000 }
+    ]);
+  });
+
   it("validates inline split inputs and deterministic raw allocations", async () => {
     const baseIntent = {
       amount: "0.01",
