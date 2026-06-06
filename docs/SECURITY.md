@@ -69,13 +69,15 @@ Webhook secrets are stored in local SQLite for the MVP. A production deployment 
 
 ## API Keys
 
-Payment and webhook mutation routes require `x-arcflow-api-key`.
+Merchant/admin mutation routes require `x-arcflow-api-key`.
 
 Local API keys are generated as `ak_test_...` secrets. ArcFlow stores SHA-256 hashes and key previews in SQLite, shows the full key only once, tracks last-used timestamps, and supports revocation from Developer Config.
 
 The first key can be created from the local console without an existing key so a fresh clone can bootstrap itself. Production deployments should replace that local bootstrap flow with an authenticated admin setup and project-scoped keys.
 
 API keys are scoped to projects. A key can only mutate and inspect the payment trail for its project. The local console stores project keys in browser local storage to support the project selector.
+
+Hosted checkout confirmation is not scoped by the browser's active console key. It resolves by payment intent ID and still requires exact payment verification before issuing a receipt.
 
 ## Project Boundaries
 

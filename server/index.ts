@@ -115,7 +115,7 @@ app.post("/api/payment-intents", requireApiKey, (request, response) => {
   }
 });
 
-app.post("/api/payment-intents/:id/confirm", requireApiKey, async (request, response) => {
+app.post("/api/payment-intents/:id/confirm", async (request, response) => {
   const intent = getPaymentIntent(routeParam(request, "id"));
   if (!intent) {
     response.status(404).json({ error: "Payment intent not found." });
@@ -125,11 +125,6 @@ app.post("/api/payment-intents/:id/confirm", requireApiKey, async (request, resp
     response.status(409).json({ error: "Payment intent is already paid." });
     return;
   }
-  if (intent.projectId !== currentProjectId(request, response)) {
-    response.status(404).json({ error: "Payment intent not found for this project." });
-    return;
-  }
-
   const body = request.body as ConfirmPaymentInput;
   if (!body.txHash?.startsWith("0x")) {
     response.status(400).json({ error: "A transaction hash is required." });
@@ -176,7 +171,7 @@ app.post("/api/payment-intents/:id/confirm", requireApiKey, async (request, resp
   }
 });
 
-app.post("/api/payment-intents/:id/demo-settle", requireApiKey, async (request, response) => {
+app.post("/api/payment-intents/:id/demo-settle", async (request, response) => {
   const intent = getPaymentIntent(routeParam(request, "id"));
   if (!intent) {
     response.status(404).json({ error: "Payment intent not found." });
@@ -186,11 +181,6 @@ app.post("/api/payment-intents/:id/demo-settle", requireApiKey, async (request, 
     response.status(409).json({ error: "Payment intent is already paid." });
     return;
   }
-  if (intent.projectId !== currentProjectId(request, response)) {
-    response.status(404).json({ error: "Payment intent not found for this project." });
-    return;
-  }
-
   const receipt = createReceipt({
     projectId: intent.projectId,
     paymentIntentId: intent.id,

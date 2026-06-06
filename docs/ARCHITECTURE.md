@@ -86,9 +86,11 @@ Delivery attempts store the endpoint URL, event type, status, HTTP status, reque
 
 **API Key Auth**
 
-Protected mutation routes require the `x-arcflow-api-key` header. API keys are generated as `ak_test_...` secrets, stored as SHA-256 hashes, and shown only once in the console. The first key can bootstrap from the local console without an existing key; later key creation and protected mutations require an active key.
+Protected merchant mutation routes require the `x-arcflow-api-key` header. API keys are generated as `ak_test_...` secrets, stored as SHA-256 hashes, and shown only once in the console. The first key can bootstrap from the local console without an existing key; later key creation and protected mutations require an active key.
 
 API keys are scoped to one project. Authenticated dashboard state and protected mutations operate inside the API key's project.
+
+Hosted checkout confirmation resolves by payment intent ID and records into that intent's project, so a customer checkout is not tied to the console's currently selected project key.
 
 **Project Scoping**
 

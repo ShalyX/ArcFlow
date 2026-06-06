@@ -266,6 +266,10 @@ describe("payment intent API guards", () => {
     const defaultState = await get(`${apiBase}/state`, apiKey);
     assert.equal(defaultState.currentProjectId, "proj_default");
     assert.ok(!defaultState.paymentIntents.some((intent: { id: string }) => intent.id === projectIntent.id));
+
+    const checkoutSettle = await post(`${apiBase}/payment-intents/${projectIntent.id}/demo-settle`, undefined, apiKey);
+    assert.equal(checkoutSettle.intent.status, "paid");
+    assert.equal(checkoutSettle.intent.projectId, createdProject.project.id);
   });
 
   it("supports authenticated SDK helpers", async () => {
