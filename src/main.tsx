@@ -909,7 +909,7 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
           <Split size={20} />
           <div>
             <h2>Create Split</h2>
-            <p>Create an accounting plan for a verified payment.</p>
+            <p>Create a split allocation for recorded plans or executable settlement.</p>
           </div>
         </div>
         <label>
