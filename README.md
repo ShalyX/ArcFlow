@@ -390,7 +390,7 @@ Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, dup
 
 ## Roadmap
 
-- Splits: record payout instructions for multiple receivers after settlement. Payout automation comes later.
+- Splits: collect into a settlement wallet and record payout instructions for multiple receivers after settlement. Payout automation comes later.
 - Subscriptions: recurring intents, retries, and access status webhooks.
 - Agent spend controls: policy wallets, per-action caps, and spend logs.
 - Credibility: payment and fulfillment history as a reputation graph.

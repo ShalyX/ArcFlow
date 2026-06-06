@@ -813,9 +813,10 @@ function DeveloperConfig({ apiKeys, onRefresh }: { apiKeys: DashboardState["apiK
 
 function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; onRefresh: () => Promise<void> }) {
   const [name, setName] = useState("Creator split");
+  const [settlementReceiver, setSettlementReceiver] = useState("0x0000000000000000000000000000000000000001");
   const [receivers, setReceivers] = useState([
-    { label: "Primary", address: "0x0000000000000000000000000000000000000001", shareBps: 7000 },
-    { label: "Partner", address: "0x0000000000000000000000000000000000000002", shareBps: 3000 }
+    { label: "Creator", address: "0x0000000000000000000000000000000000000002", shareBps: 7000 },
+    { label: "Partner", address: "0x0000000000000000000000000000000000000003", shareBps: 3000 }
   ]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -835,7 +836,7 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
     setBusy("create");
     setError("");
     try {
-      await createSplit({ name, receivers: receivers as SplitReceiver[] });
+      await createSplit({ name, settlementReceiver: settlementReceiver as `0x${string}`, receivers: receivers as SplitReceiver[] });
       await onRefresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create split.");
@@ -844,18 +845,18 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
     }
   }
 
-  async function createSplitIntent(splitId: string, primaryReceiver: string) {
+  async function createSplitIntent(splitId: string, settlementReceiver: string) {
     setBusy(`intent-${splitId}`);
     setError("");
     try {
       await createPaymentIntent({
         amount: "10.00",
-        receiver: primaryReceiver as `0x${string}`,
+        receiver: settlementReceiver as `0x${string}`,
         description: "Split payment checkout",
         template: "split-payment",
         metadata: {
           splitId,
-          primaryReceiver,
+          settlementReceiver,
           shares: "record-only"
         }
       });
@@ -880,6 +881,10 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
         <label>
           Name
           <input value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label>
+          Collection wallet
+          <input value={settlementReceiver} onChange={(event) => setSettlementReceiver(event.target.value)} placeholder="0x..." />
         </label>
         <div className="split-receivers">
           {receivers.map((receiver, index) => (
@@ -912,7 +917,7 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
               <Split size={19} />
               <div>
                 <strong>{split.name}</strong>
-                <span>{split.id} · pending payout instructions</span>
+                <span>{split.id} · collection wallet {split.settlementReceiver}</span>
               </div>
             </div>
             <div className="split-receiver-list">
@@ -925,7 +930,7 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
               ))}
             </div>
             <div className="webhook-actions">
-              <button className="tiny-button" type="button" onClick={() => createSplitIntent(split.id, split.receivers[0]?.address || "0x0000000000000000000000000000000000000001")} disabled={Boolean(busy)}>
+              <button className="tiny-button" type="button" onClick={() => createSplitIntent(split.id, split.settlementReceiver)} disabled={Boolean(busy)}>
                 {busy === `intent-${split.id}` ? <Loader2 className="spin" size={15} /> : <Send size={15} />}
                 Create split intent
               </button>

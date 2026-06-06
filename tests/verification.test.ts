@@ -13,6 +13,7 @@ const receiver = "0x0000000000000000000000000000000000000001";
 const payer = "0x1111111111111111111111111111111111111111";
 const wrongReceiver = "0x0000000000000000000000000000000000000002";
 const wrongToken = "0x2222222222222222222222222222222222222222";
+const splitSettlementReceiver = "0x0000000000000000000000000000000000000003";
 const expectedAmount = "10000000";
 
 function transferLog({
@@ -332,16 +333,19 @@ describe("payment intent API guards", () => {
   it("records split payment instructions without payout automation", async () => {
     const split = await post(`${apiBase}/splits`, {
       name: "Revenue split",
+      settlementReceiver: splitSettlementReceiver,
       receivers: [
         { label: "Primary", address: receiver, shareBps: 7000 },
         { label: "Partner", address: wrongReceiver, shareBps: 3000 }
       ]
     }, apiKey);
     assert.equal(split.name, "Revenue split");
+    assert.equal(split.settlementReceiver, splitSettlementReceiver);
     assert.equal(split.receivers.length, 2);
 
     const badSplit = await postRaw(`${apiBase}/splits`, {
       name: "Broken split",
+      settlementReceiver: splitSettlementReceiver,
       receivers: [
         { label: "Primary", address: receiver, shareBps: 5000 }
       ]
@@ -350,16 +354,18 @@ describe("payment intent API guards", () => {
 
     const intent = await post(`${apiBase}/payment-intents`, {
       amount: "10.00",
-      receiver,
+      receiver: splitSettlementReceiver,
       description: "Split checkout",
       template: "split-payment",
       metadata: {
         splitId: split.id,
-        primaryReceiver: receiver,
+        settlementReceiver: splitSettlementReceiver,
         shares: "record-only"
       }
     }, apiKey);
     assert.equal(intent.template, "split-payment");
+    assert.equal(intent.receiver, splitSettlementReceiver);
+    assert.notEqual(intent.receiver, split.receivers[0].address);
     assert.equal(intent.metadata.splitId, split.id);
 
     const settled = await post(`${apiBase}/payment-intents/${intent.id}/demo-settle`);
@@ -373,6 +379,7 @@ describe("payment intent API guards", () => {
     const projectClient = new ArcFlow({ baseUrl: apiBase, apiKey });
     const sdkSplit = await projectClient.splits.create({
       name: "SDK split",
+      settlementReceiver: splitSettlementReceiver,
       receivers: [
         { label: "Primary", address: receiver, shareBps: 6000 },
         { label: "Partner", address: wrongReceiver, shareBps: 4000 }

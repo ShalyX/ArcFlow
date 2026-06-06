@@ -68,6 +68,7 @@ export type Split = {
   id: string;
   projectId: string;
   name: string;
+  settlementReceiver: `0x${string}`;
   receivers: SplitReceiver[];
   createdAt: string;
 };
@@ -134,6 +135,7 @@ export type CreateIntentInput = {
 
 export type CreateSplitInput = {
   name: string;
+  settlementReceiver: `0x${string}`;
   receivers: SplitReceiver[];
 };
 

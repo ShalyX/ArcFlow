@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import "dotenv/config";
 import express from "express";
 import { parseUsdc } from "../src/shared/arc";
-import type { ConfirmPaymentInput, CreateIntentInput } from "../src/shared/types";
+import type { ConfirmPaymentInput, CreateIntentInput, CreateSplitInput } from "../src/shared/types";
 import { validateIntentAddress, verifyArcUsdcTransfer } from "./arcVerifier";
 import {
   addLog,
@@ -247,7 +247,7 @@ app.post("/api/webhooks", requireApiKey, (request, response) => {
 app.post("/api/splits", requireApiKey, (request, response) => {
   try {
     const split = createSplit({
-      ...(request.body as { name: string; receivers: [] }),
+      ...(request.body as CreateSplitInput),
       projectId: currentProjectId(request, response)
     });
     response.status(201).json(split);
@@ -419,6 +419,9 @@ function validateSplitMetadata(metadata: Record<string, string> | undefined, pro
   const split = getSplit(splitId);
   if (!split || split.projectId !== projectId) {
     throw new Error("Split not found for this project.");
+  }
+  if (metadata?.settlementReceiver && metadata.settlementReceiver.toLowerCase() !== split.settlementReceiver.toLowerCase()) {
+    throw new Error("Split settlement receiver does not match the split configuration.");
   }
 }
 

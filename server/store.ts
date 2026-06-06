@@ -49,6 +49,7 @@ function migrate() {
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
       name TEXT NOT NULL,
+      settlement_receiver TEXT,
       receivers TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
@@ -129,6 +130,7 @@ function migrate() {
   `);
   addColumnIfMissing("payment_intents", "project_id", "TEXT");
   addColumnIfMissing("splits", "project_id", "TEXT");
+  addColumnIfMissing("splits", "settlement_receiver", "TEXT");
   addColumnIfMissing("receipts", "project_id", "TEXT");
   addColumnIfMissing("webhooks", "project_id", "TEXT");
   addColumnIfMissing("webhook_deliveries", "project_id", "TEXT");
@@ -171,6 +173,9 @@ function backfillProjectIds() {
   for (const table of ["payment_intents", "splits", "receipts", "webhooks", "webhook_deliveries", "event_logs", "api_keys"]) {
     db.run(`UPDATE ${table} SET project_id = ? WHERE project_id IS NULL OR project_id = ''`, [DEFAULT_PROJECT_ID]);
   }
+  db.run("UPDATE splits SET settlement_receiver = ? WHERE settlement_receiver IS NULL OR settlement_receiver = ''", [
+    "0x0000000000000000000000000000000000000001"
+  ]);
 }
 
 function seedDefaultWebhook() {
@@ -253,6 +258,7 @@ function mapSplit(row: Row): Split {
     id: asText(row.id),
     projectId: asText(row.project_id) || DEFAULT_PROJECT_ID,
     name: asText(row.name),
+    settlementReceiver: (asText(row.settlement_receiver) || "0x0000000000000000000000000000000000000001") as `0x${string}`,
     receivers: parseJson<SplitReceiver[]>(row.receivers, []),
     createdAt: asText(row.created_at)
   };
@@ -396,18 +402,21 @@ export function createProject(name: string) {
 
 export function createSplit(input: CreateSplitInput & { projectId?: string }) {
   const projectId = input.projectId || DEFAULT_PROJECT_ID;
+  const settlementReceiver = validateSplitAddress(input.settlementReceiver, "Settlement receiver");
   const receivers = validateSplitReceivers(input.receivers);
   const split: Split = {
     id: id("split"),
     projectId,
     name: input.name.trim() || "Untitled split",
+    settlementReceiver,
     receivers,
     createdAt: now()
   };
-  db.run("INSERT INTO splits (id, project_id, name, receivers, created_at) VALUES (?, ?, ?, ?, ?)", [
+  db.run("INSERT INTO splits (id, project_id, name, settlement_receiver, receivers, created_at) VALUES (?, ?, ?, ?, ?, ?)", [
     split.id,
     split.projectId,
     split.name,
+    split.settlementReceiver,
     JSON.stringify(split.receivers),
     split.createdAt
   ]);
@@ -887,9 +896,7 @@ function validateSplitReceivers(receivers: SplitReceiver[]) {
   }));
 
   for (const receiver of cleaned) {
-    if (!/^0x[a-fA-F0-9]{40}$/.test(receiver.address)) {
-      throw new Error("Each split receiver must be a valid EVM address.");
-    }
+    validateSplitAddress(receiver.address, "Each split receiver");
     if (!Number.isInteger(receiver.shareBps) || receiver.shareBps <= 0) {
       throw new Error("Each split receiver share must be positive basis points.");
     }
@@ -901,6 +908,13 @@ function validateSplitReceivers(receivers: SplitReceiver[]) {
   }
 
   return cleaned;
+}
+
+function validateSplitAddress(address: string, label: string) {
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    throw new Error(`${label} must be a valid EVM address.`);
+  }
+  return address as `0x${string}`;
 }
 
 function createWebhookSecret() {
