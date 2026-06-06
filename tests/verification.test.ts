@@ -195,7 +195,7 @@ describe("payment intent API guards", () => {
     assert.notEqual(rotated.signingSecret, webhook.signingSecret);
     assert.match(rotated.signingSecret, /^whsec_/);
 
-    const state = await fetch(`${apiBase}/state`).then((response) => response.json());
+    const state = await get(`${apiBase}/state`, apiKey);
     const demoWebhook = state.webhooks.find((item: { url: string }) => item.url === "http://127.0.0.1:9090/webhooks/arcflow");
     assert.ok(demoWebhook);
     const syncedDemo = await post(`${apiBase}/webhooks/${demoWebhook.id}/rotate-secret`, undefined, apiKey);
@@ -274,6 +274,29 @@ describe("payment intent API guards", () => {
     const directReceipt = await get(`${apiBase}/receipts/${checkoutSettle.receipt.id}`, apiKey);
     assert.equal(directReceipt.id, checkoutSettle.receipt.id);
     assert.equal(directReceipt.projectId, createdProject.project.id);
+
+    const publicIntent = await get(`${apiBase}/payment-intents/${projectIntent.id}`);
+    assert.equal(publicIntent.id, projectIntent.id);
+    assert.equal(publicIntent.projectId, createdProject.project.id);
+
+    const publicReceipt = await get(`${apiBase}/receipts/${checkoutSettle.receipt.id}`);
+    assert.equal(publicReceipt.id, checkoutSettle.receipt.id);
+
+    const publicState = await getRaw(`${apiBase}/state`);
+    assert.equal(publicState.status, 401);
+
+    const publicWebhookCreate = await postRaw(`${apiBase}/webhooks`, {
+      url: "http://127.0.0.1:4/webhooks/arcflow",
+      events: ["payment_intent.paid"],
+      enabled: true
+    });
+    assert.equal(publicWebhookCreate.status, 401);
+
+    const publicApiKeyCreate = await postRaw(`${apiBase}/api-keys`, { name: "Public key attempt" });
+    assert.equal(publicApiKeyCreate.status, 401);
+
+    const publicProjectCreate = await postRaw(`${apiBase}/projects`, { name: "Public project attempt" });
+    assert.equal(publicProjectCreate.status, 401);
   });
 
   it("supports authenticated SDK helpers", async () => {
@@ -348,6 +371,16 @@ async function get(url: string, apiKey?: string) {
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || `GET ${url} failed`);
   return payload;
+}
+
+async function getRaw(url: string, apiKey?: string) {
+  const response = await fetch(url, {
+    headers: authHeaders(apiKey)
+  });
+  return {
+    status: response.status,
+    body: await response.json()
+  };
 }
 
 function authHeaders(apiKey?: string) {

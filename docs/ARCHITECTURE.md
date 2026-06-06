@@ -95,6 +95,8 @@ Hosted checkout confirmation resolves by payment intent ID and records into that
 
 Receipt pages also resolve by receipt ID directly so proof links remain viewable even when the console is scoped to another project.
 
+Hosted checkout can read a payment intent by ID, confirm a transaction for that intent, demo-settle that intent in local mode, and read a receipt by ID. It cannot list project state, list all receipts, manage webhooks, manage API keys, create projects, or switch project ownership without a valid project API key.
+
 **Project Scoping**
 
 ArcFlow seeds a default `Demo Merchant` project on boot and backfills legacy local data into that project. Payment intents, receipts, webhook endpoints, webhook delivery attempts, event logs, and API keys all carry a `project_id`. Webhook delivery only reads endpoints from the event's project, so merchant trails stay isolated.

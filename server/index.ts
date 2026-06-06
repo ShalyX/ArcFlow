@@ -46,7 +46,12 @@ app.get("/api/health", (_request, response) => {
 });
 
 app.get("/api/state", (request, response) => {
-  response.json(getState(currentProjectId(request, response)));
+  const existingKey = authenticateRequest(request);
+  if (countActiveApiKeys() > 0 && !existingKey) {
+    response.status(401).json({ error: "A valid ArcFlow API key is required." });
+    return;
+  }
+  response.json(getState(existingKey?.projectId || DEFAULT_PROJECT_ID));
 });
 
 app.get("/api/payment-intents/:id", (request, response) => {
