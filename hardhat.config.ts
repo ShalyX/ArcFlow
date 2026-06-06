@@ -1,3 +1,4 @@
+import "dotenv/config";
 import hardhatViem from "@nomicfoundation/hardhat-viem";
 import { configVariable, defineConfig } from "hardhat/config";
 
