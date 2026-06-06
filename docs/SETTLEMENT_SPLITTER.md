@@ -28,8 +28,8 @@ Create Revenue Split Plan intent
    7 USDC -> Creator
    2 USDC -> Contributor
    1 USDC -> Platform
--> ArcFlowSplitter emits SplitSettled
--> ArcFlow verifies SplitSettled plus USDC Transfer events
+-> ArcFlowSplitter emits SplitPaid and SplitTransfer events
+-> ArcFlow verifies SplitPaid, SplitTransfer, and USDC Transfer events
 -> Receipt says "Split executed"
 -> Webhook/logs record actual disbursement
 ```
@@ -45,7 +45,8 @@ The contract should:
 - Sum exact raw USDC amounts.
 - Pull total USDC from `msg.sender`.
 - Transfer each allocation to its recipient.
-- Emit one settlement event containing intent ID, payer, total, recipients, and amounts.
+- Emit one `SplitPaid` event containing intent ID, payer, total, recipients, and amounts.
+- Emit one `SplitTransfer` event per recipient.
 
 Starter contract: [`contracts/ArcFlowSplitter.sol`](../contracts/ArcFlowSplitter.sol)
 
@@ -87,10 +88,11 @@ Settlement split verifier should check:
 - Correct Arc Testnet chain.
 - Successful transaction.
 - Transaction called the configured `ArcFlowSplitter`.
-- `SplitSettled` event exists for the expected intent ID.
+- `SplitPaid` event exists for the expected intent ID.
 - Event payer matches the transaction sender.
 - Event total equals the payment intent amount.
 - Event recipients and amounts match `splitPlan.allocations` exactly.
+- `SplitTransfer` events match every recipient and amount exactly.
 - USDC `Transfer` logs exist from splitter to each recipient for each exact amount.
 - Tx hash has not already been used.
 - Intent is still pending before settlement.
@@ -120,3 +122,24 @@ Explorer: https://testnet.arcscan.app
 ```
 
 Use environment variables for deployer credentials. Do not hardcode or commit private keys.
+
+## Commands
+
+```bash
+npm run compile:contracts
+npm run test:contracts
+```
+
+Deploy to Arc Testnet:
+
+```bash
+ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
+PRIVATE_KEY=...
+npm run deploy:splitter
+```
+
+After deployment, set:
+
+```bash
+ARCFLOW_SPLITTER_ADDRESS=0x...
+```

@@ -8,6 +8,9 @@
     "dev:all": "concurrently -n api,web,merchant -c blue,green,magenta \"tsx watch server/index.ts\" \"vite --host 127.0.0.1 --port 5173\" \"tsx watch examples/merchant-api/index.ts\"",
     "build": "tsc --noEmit && vite build",
     "test": "node --import tsx --test tests/**/*.test.ts",
+    "test:contracts": "hardhat run contract-tests/ArcFlowSplitter.test.ts",
+    "compile:contracts": "hardhat compile",
+    "deploy:splitter": "hardhat run scripts/deploy-splitter.ts --network arcTestnet",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1",
     "api": "tsx watch server/index.ts",
@@ -28,14 +31,16 @@
     "sql.js": "^1.14.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "viem": "^2.40.3",
+    "viem": "^2.52.2",
     "vite": "^7.2.4"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-viem": "^3.0.9",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "hardhat": "^3.8.0"
   }
 }

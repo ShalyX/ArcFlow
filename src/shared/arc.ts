@@ -4,6 +4,7 @@ export const ARC_TESTNET = {
   rpcUrl: "https://rpc.testnet.arc.network",
   explorerUrl: "https://testnet.arcscan.app",
   usdcAddress: "0x3600000000000000000000000000000000000000",
+  splitterAddress: "0x0000000000000000000000000000000000000000",
   usdcDecimals: 6
 } as const;
 

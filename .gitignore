@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .vite/
+artifacts/
+cache/
 data/
 .env
 .env.*

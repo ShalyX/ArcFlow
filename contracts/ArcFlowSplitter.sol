@@ -15,13 +15,14 @@ contract ArcFlowSplitter {
 
     IERC20 public immutable usdc;
 
-    event SplitSettled(
+    event SplitPaid(
         bytes32 indexed intentId,
         address indexed payer,
         uint256 totalAmount,
         address[] recipients,
         uint256[] amounts
     );
+    event SplitTransfer(bytes32 indexed intentId, address indexed recipient, uint256 amount);
 
     constructor(address usdcAddress) {
         if (usdcAddress == address(0)) revert InvalidRecipient();
@@ -43,8 +44,9 @@ contract ArcFlowSplitter {
 
         for (uint256 index = 0; index < recipients.length; index++) {
             if (!usdc.transfer(recipients[index], amounts[index])) revert TransferFailed();
+            emit SplitTransfer(intentId, recipients[index], amounts[index]);
         }
 
-        emit SplitSettled(intentId, msg.sender, totalAmount, recipients, amounts);
+        emit SplitPaid(intentId, msg.sender, totalAmount, recipients, amounts);
     }
 }

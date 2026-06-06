@@ -218,8 +218,8 @@ Create Revenue Split Plan intent
 -> Wallet calls ArcFlowSplitter.payAndSplit(intentId, recipients, amounts)
 -> Splitter pulls USDC from payer
 -> Splitter transfers exact amounts to recipients
--> Splitter emits SplitSettled
--> ArcFlow verifies SplitSettled plus recipient Transfer events
+-> Splitter emits SplitPaid and SplitTransfer events
+-> ArcFlow verifies SplitPaid, SplitTransfer, and recipient Transfer events
 -> Receipt says "Split executed"
 ```
 
