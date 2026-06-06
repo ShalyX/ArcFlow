@@ -492,6 +492,10 @@ export function getReceiptByTxHash(txHash: `0x${string}`) {
   return getOne("SELECT * FROM receipts WHERE lower(tx_hash) = lower(?)", [txHash], mapReceipt);
 }
 
+export function getReceipt(receiptId: string) {
+  return getOne("SELECT * FROM receipts WHERE id = ?", [receiptId], mapReceipt);
+}
+
 export function markIntentPaid(paymentIntentId: string, txHash: `0x${string}`, receiptId: string) {
   db.run("UPDATE payment_intents SET status = ?, tx_hash = ?, receipt_id = ?, updated_at = ? WHERE id = ?", [
     "paid",

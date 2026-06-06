@@ -20,6 +20,7 @@ import {
   getWebhook,
   getWebhookDelivery,
   getPaymentIntent,
+  getReceipt,
   getIntentByTxHash,
   getReceiptByTxHash,
   getState,
@@ -55,6 +56,15 @@ app.get("/api/payment-intents/:id", (request, response) => {
     return;
   }
   response.json(intent);
+});
+
+app.get("/api/receipts/:id", (request, response) => {
+  const receipt = getReceipt(routeParam(request, "id"));
+  if (!receipt) {
+    response.status(404).json({ error: "Receipt not found." });
+    return;
+  }
+  response.json(receipt);
 });
 
 app.post("/api/api-keys", (request, response) => {

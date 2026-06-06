@@ -28,6 +28,7 @@ It provides:
 
 - `POST /api/payment-intents`
 - `GET /api/payment-intents/:id`
+- `GET /api/receipts/:id`
 - `POST /api/payment-intents/:id/confirm`
 - `POST /api/payment-intents/:id/demo-settle`
 - `GET /api/state`
@@ -91,6 +92,8 @@ Protected merchant mutation routes require the `x-arcflow-api-key` header. API k
 API keys are scoped to one project. Authenticated dashboard state and protected mutations operate inside the API key's project.
 
 Hosted checkout confirmation resolves by payment intent ID and records into that intent's project, so a customer checkout is not tied to the console's currently selected project key.
+
+Receipt pages also resolve by receipt ID directly so proof links remain viewable even when the console is scoped to another project.
 
 **Project Scoping**
 

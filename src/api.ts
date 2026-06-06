@@ -1,4 +1,4 @@
-import type { ApiKey, ConfirmPaymentInput, CreateIntentInput, CreatedApiKey, CreatedProject, DashboardState, PaymentIntent, WebhookEndpoint } from "./shared/types";
+import type { ApiKey, ConfirmPaymentInput, CreateIntentInput, CreatedApiKey, CreatedProject, DashboardState, PaymentIntent, Receipt, WebhookEndpoint } from "./shared/types";
 
 const apiKeyStorageKey = "arcflow.apiKey";
 const projectKeyStorageKey = "arcflow.projectKeys";
@@ -27,6 +27,10 @@ export function getDashboardState() {
 
 export function getPaymentIntent(id: string) {
   return request<PaymentIntent>(`/payment-intents/${id}`);
+}
+
+export function getReceipt(id: string) {
+  return request<Receipt>(`/receipts/${id}`);
 }
 
 export function getStoredApiKey() {

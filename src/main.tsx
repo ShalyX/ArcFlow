@@ -36,6 +36,7 @@ import {
   demoSettlePayment,
   getDashboardState,
   getPaymentIntent,
+  getReceipt,
   getStoredProjectKeys,
   getStoredApiKey,
   resetDemoData,
@@ -1051,8 +1052,13 @@ function CheckoutStepper({ status }: { status: CheckoutStatus }) {
 }
 
 function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: DashboardState; onBack: () => void }) {
-  const receipt = state.receipts.find((item) => item.id === receiptId);
+  const [receipt, setReceipt] = useState<Receipt | null>(state.receipts.find((item) => item.id === receiptId) || null);
+  const [message, setMessage] = useState("");
   const intent = receipt ? state.paymentIntents.find((item) => item.id === receipt.paymentIntentId) : undefined;
+
+  useEffect(() => {
+    getReceipt(receiptId).then(setReceipt).catch((error) => setMessage(error.message));
+  }, [receiptId]);
 
   return (
     <main className="checkout-shell">
@@ -1092,7 +1098,7 @@ function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: D
             </div>
           </>
         ) : (
-          <div className="notice">Receipt not found yet. Return to the console after settlement.</div>
+          <div className="notice">{message || "Loading receipt..."}</div>
         )}
       </section>
     </main>

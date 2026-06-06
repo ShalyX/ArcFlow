@@ -270,6 +270,10 @@ describe("payment intent API guards", () => {
     const checkoutSettle = await post(`${apiBase}/payment-intents/${projectIntent.id}/demo-settle`, undefined, apiKey);
     assert.equal(checkoutSettle.intent.status, "paid");
     assert.equal(checkoutSettle.intent.projectId, createdProject.project.id);
+
+    const directReceipt = await get(`${apiBase}/receipts/${checkoutSettle.receipt.id}`, apiKey);
+    assert.equal(directReceipt.id, checkoutSettle.receipt.id);
+    assert.equal(directReceipt.projectId, createdProject.project.id);
   });
 
   it("supports authenticated SDK helpers", async () => {
