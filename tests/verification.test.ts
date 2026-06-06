@@ -4,7 +4,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { encodeAbiParameters, encodeEventTopics, erc20Abi, type Hex } from "viem";
-import { arcFlowIntentIdHash, findMatchingExecutableSplit, findMatchingUsdcTransfer, type TransferLogCandidate } from "../server/arcVerifier";
+import { arcFlowIntentIdHash, findMatchingExecutableSplit, findMatchingUsdcTransfer, verifyArcExecutableSplit, type TransferLogCandidate } from "../server/arcVerifier";
+import type { PaymentIntent } from "../src/shared/types";
 import { ARC_TESTNET } from "../src/shared/arc";
 import { ArcFlow } from "../packages/sdk/src/index";
 import { signArcFlowWebhook, verifyArcFlowWebhook } from "../packages/sdk/src/webhooks";
@@ -282,6 +283,128 @@ describe("executable split matching", () => {
     assert.equal(match, null);
   });
 
+  it("rejects wrong USDC token for recipient transfers", () => {
+    const logs = [
+      splitPaidLog({ paymentIntentId }),
+      ...splitPlan().allocations.map((allocation) => splitTransferLog({
+        paymentIntentId,
+        recipient: allocation.address,
+        amount: allocation.amount
+      })),
+      ...splitPlan().allocations.map((allocation) => transferLog({
+        token: wrongToken,
+        from: splitterAddress,
+        to: allocation.address,
+        value: allocation.amount
+      }))
+    ];
+    const match = findMatchingExecutableSplit({
+      logs,
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects wrong SplitPaid total", () => {
+    const logs = executableSplitLogs(paymentIntentId);
+    logs[0] = splitPaidLog({ paymentIntentId, totalAmount: "9999999" });
+    const match = findMatchingExecutableSplit({
+      logs,
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects wrong recipient amount", () => {
+    const logs = executableSplitLogs(paymentIntentId);
+    logs[1] = splitTransferLog({ paymentIntentId, recipient: receiver, amount: "6999999" });
+    const match = findMatchingExecutableSplit({
+      logs,
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects extra SplitTransfer events", () => {
+    const logs = [
+      ...executableSplitLogs(paymentIntentId),
+      splitTransferLog({ paymentIntentId, recipient: "0x4444444444444444444444444444444444444444", amount: "1" })
+    ];
+    const match = findMatchingExecutableSplit({
+      logs,
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects extra SplitTransfer events for another intent", () => {
+    const logs = [
+      ...executableSplitLogs(paymentIntentId),
+      splitTransferLog({ paymentIntentId: "pi_other", recipient: "0x4444444444444444444444444444444444444444", amount: "1" })
+    ];
+    const match = findMatchingExecutableSplit({
+      logs,
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects extra SplitPaid events", () => {
+    const logs = [
+      ...executableSplitLogs(paymentIntentId),
+      splitPaidLog({ paymentIntentId: "pi_other", totalAmount: "1", recipients: [receiver], amounts: ["1"] })
+    ];
+    const match = findMatchingExecutableSplit({
+      logs,
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
+  it("rejects extra recipient USDC transfers", () => {
+    const logs = [
+      ...executableSplitLogs(paymentIntentId),
+      transferLog({
+        from: splitterAddress,
+        to: "0x4444444444444444444444444444444444444444",
+        value: "1"
+      })
+    ];
+    const match = findMatchingExecutableSplit({
+      logs,
+      paymentIntentId,
+      splitPlan: splitPlan(),
+      splitterAddress,
+      usdcAddress: ARC_TESTNET.usdcAddress
+    });
+
+    assert.equal(match, null);
+  });
+
   it("rejects split plans whose raw allocations do not sum to total", () => {
     assert.throws(
       () => findMatchingExecutableSplit({
@@ -298,6 +421,27 @@ describe("executable split matching", () => {
         usdcAddress: ARC_TESTNET.usdcAddress
       }),
       /do not sum/
+    );
+  });
+
+  it("rejects non-executable revenue split intents from executable verification", async () => {
+    const intent = {
+      id: paymentIntentId,
+      projectId: "proj_test",
+      amount: expectedAmount,
+      receiver: splitSettlementReceiver,
+      status: "pending",
+      checkoutUrl: `/pay/${paymentIntentId}`,
+      description: "Revenue split plan",
+      template: "revenue_split",
+      metadata: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    } satisfies PaymentIntent;
+
+    await assert.rejects(
+      () => verifyArcExecutableSplit(intent, "0xabc" as `0x${string}`, splitPlan(), splitterAddress),
+      /not an executable revenue split/
     );
   });
 });

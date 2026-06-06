@@ -129,7 +129,7 @@ export type CreatedProject = {
   apiKey: CreatedApiKey;
 };
 
-export type TemplateKey = "payment-link" | "access-unlock" | "invoice" | "split-payment" | "revenue_split";
+export type TemplateKey = "payment-link" | "access-unlock" | "invoice" | "split-payment" | "revenue_split" | "revenue_split_executable";
 
 export type DashboardState = {
   currentProjectId: string;

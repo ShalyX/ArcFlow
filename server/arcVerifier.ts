@@ -128,33 +128,26 @@ export function findMatchingExecutableSplit({
   const paid = findSplitPaidLog({ logs, expectedIntentId, splitPlan, splitterAddress });
   if (!paid) return null;
 
+  const splitTransfers = findSplitTransferLogs({ logs, splitterAddress });
+  if (splitTransfers.length !== splitPlan.allocations.length) return null;
+
+  const splitterUsdcTransfers = findSplitterUsdcTransfers({ logs, splitterAddress, usdcAddress });
+  if (splitterUsdcTransfers.length !== splitPlan.allocations.length) return null;
+
   for (let index = 0; index < splitPlan.allocations.length; index++) {
     const recipient = expectedRecipients[index];
     const amount = expectedAmounts[index];
 
-    const hasSplitTransfer = logs.some((log) => {
-      if (log.address.toLowerCase() !== splitterAddress.toLowerCase()) return false;
-      const decoded = decodeSplitterLog(log);
-      return Boolean(
-        decoded?.eventName === "SplitTransfer" &&
-        decoded.args.intentId.toLowerCase() === expectedIntentId.toLowerCase() &&
-        decoded.args.recipient.toLowerCase() === recipient &&
-        decoded.args.amount === amount
-      );
-    });
+    const hasSplitTransfer = splitTransfers.some(
+      (event) =>
+        event.intentId.toLowerCase() === expectedIntentId.toLowerCase() &&
+        event.recipient.toLowerCase() === recipient &&
+        event.amount === amount
+    );
 
     if (!hasSplitTransfer) return null;
 
-    const hasUsdcTransfer = logs.some((log) => {
-      if (log.address.toLowerCase() !== usdcAddress.toLowerCase()) return false;
-      const transfer = decodeTransferLog(log);
-      return Boolean(
-        transfer &&
-        transfer.from.toLowerCase() === splitterAddress.toLowerCase() &&
-        transfer.to.toLowerCase() === recipient &&
-        transfer.value === amount
-      );
-    });
+    const hasUsdcTransfer = splitterUsdcTransfers.some((transfer) => transfer.to.toLowerCase() === recipient && transfer.value === amount);
 
     if (!hasUsdcTransfer) return null;
   }
@@ -175,6 +168,9 @@ export async function verifyArcExecutableSplit(
   splitPlan: SplitPlan,
   splitterAddress: `0x${string}` = process.env.ARCFLOW_SPLITTER_ADDRESS as `0x${string}` || ARC_TESTNET.splitterAddress
 ): Promise<VerifiedExecutableSplit> {
+  if (intent.template !== "revenue_split_executable") {
+    throw new Error("Payment intent is not an executable revenue split.");
+  }
   if (!validateIntentAddress(splitterAddress)) {
     throw new Error("ArcFlow splitter contract address is not configured.");
   }
@@ -235,11 +231,16 @@ function findSplitPaidLog({
 }) {
   const expectedRecipients = splitPlan.allocations.map((allocation) => allocation.address.toLowerCase());
   const expectedAmounts = splitPlan.allocations.map((allocation) => BigInt(allocation.amount));
-
-  for (const log of logs) {
-    if (log.address.toLowerCase() !== splitterAddress.toLowerCase()) continue;
+  const splitPaidLogs = logs.flatMap((log) => {
+    if (log.address.toLowerCase() !== splitterAddress.toLowerCase()) return [];
     const decoded = decodeSplitterLog(log);
-    if (decoded?.eventName !== "SplitPaid") continue;
+    if (decoded?.eventName !== "SplitPaid") return [];
+    return [decoded];
+  });
+
+  if (splitPaidLogs.length !== 1) return null;
+
+  for (const decoded of splitPaidLogs) {
     if (decoded.args.intentId.toLowerCase() !== expectedIntentId.toLowerCase()) continue;
     if (decoded.args.totalAmount !== BigInt(splitPlan.totalAmount)) continue;
     if (decoded.args.recipients.length !== expectedRecipients.length || decoded.args.amounts.length !== expectedAmounts.length) continue;
@@ -254,6 +255,38 @@ function findSplitPaidLog({
   }
 
   return null;
+}
+
+function findSplitTransferLogs({
+  logs,
+  splitterAddress
+}: {
+  logs: readonly TransferLogCandidate[];
+  splitterAddress: `0x${string}`;
+}) {
+  return logs.flatMap((log) => {
+    if (log.address.toLowerCase() !== splitterAddress.toLowerCase()) return [];
+    const decoded = decodeSplitterLog(log);
+    if (decoded?.eventName !== "SplitTransfer") return [];
+    return [{ intentId: decoded.args.intentId, recipient: decoded.args.recipient, amount: decoded.args.amount }];
+  });
+}
+
+function findSplitterUsdcTransfers({
+  logs,
+  splitterAddress,
+  usdcAddress
+}: {
+  logs: readonly TransferLogCandidate[];
+  splitterAddress: `0x${string}`;
+  usdcAddress: `0x${string}`;
+}) {
+  return logs.flatMap((log) => {
+    if (log.address.toLowerCase() !== usdcAddress.toLowerCase()) return [];
+    const transfer = decodeTransferLog(log);
+    if (!transfer || transfer.from.toLowerCase() !== splitterAddress.toLowerCase()) return [];
+    return [transfer];
+  });
 }
 
 function decodeTransferLog(log: TransferLogCandidate) {
