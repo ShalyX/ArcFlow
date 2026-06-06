@@ -12,6 +12,7 @@ It provides:
 
 - Project switching and creation
 - Payment intent creation
+- Split configuration
 - Hosted checkout
 - Wallet checkout
 - Receipt viewing
@@ -35,6 +36,7 @@ It provides:
 - `POST /api/api-keys`
 - `DELETE /api/api-keys/:id`
 - `POST /api/projects`
+- `POST /api/splits`
 - `POST /api/demo/seed`
 - `POST /api/demo/reset`
 - `POST /api/webhooks`
@@ -51,6 +53,7 @@ Runtime data is stored in `data/arcflow.sqlite`.
 Stored records:
 
 - Projects
+- Splits
 - Payment intents
 - Receipts
 - Webhook endpoints
@@ -101,6 +104,10 @@ Hosted checkout can read a payment intent by ID, confirm a transaction for that 
 
 ArcFlow seeds a default `Demo Merchant` project on boot and backfills legacy local data into that project. Payment intents, receipts, webhook endpoints, webhook delivery attempts, event logs, and API keys all carry a `project_id`. Webhook delivery only reads endpoints from the event's project, so merchant trails stay isolated.
 
+**Splits**
+
+Splits are record-only payout instructions. A split belongs to one project and contains receiver addresses plus basis-point shares totaling 100%. `split-payment` intents attach `splitId`, `primaryReceiver`, and `shares` metadata. When the intent settles, ArcFlow issues the receipt as usual and records `split.recorded`; it does not auto-payout funds in this MVP.
+
 **Merchant Demo**
 
 Express API at `http://127.0.0.1:9090`.
@@ -114,6 +121,7 @@ It verifies signed ArcFlow events and unlocks `cus_demo` when `payment_intent.pa
 - ArcFlow API client
 - `x-arcflow-api-key` authenticated requests
 - Project and API key helpers
+- Split helpers
 - Webhook endpoint and delivery helpers
 - Webhook signer/verifier
 

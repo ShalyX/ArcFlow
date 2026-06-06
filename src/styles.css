@@ -559,6 +559,12 @@ tr:last-child td {
   gap: 14px;
 }
 
+.split-manager {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(360px, 1.1fr);
+  gap: 14px;
+}
+
 .developer-config .config-grid,
 .developer-config .api-key-list {
   grid-column: 1 / -1;
@@ -567,6 +573,33 @@ tr:last-child td {
 .api-key-list {
   display: grid;
   gap: 10px;
+}
+
+.split-receivers,
+.split-receiver-list {
+  display: grid;
+  gap: 8px;
+}
+
+.split-receiver-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.5fr) minmax(180px, 1fr) minmax(74px, 0.25fr) 34px;
+  gap: 8px;
+  align-items: center;
+}
+
+.split-receiver-list div {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.35fr) minmax(0, 1fr) 76px;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.split-receiver-list span {
+  color: var(--muted);
 }
 
 .compact-panel {

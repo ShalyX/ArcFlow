@@ -328,6 +328,58 @@ describe("payment intent API guards", () => {
 
     await projectClient.webhooks.delete(webhook.id);
   });
+
+  it("records split payment instructions without payout automation", async () => {
+    const split = await post(`${apiBase}/splits`, {
+      name: "Revenue split",
+      receivers: [
+        { label: "Primary", address: receiver, shareBps: 7000 },
+        { label: "Partner", address: wrongReceiver, shareBps: 3000 }
+      ]
+    }, apiKey);
+    assert.equal(split.name, "Revenue split");
+    assert.equal(split.receivers.length, 2);
+
+    const badSplit = await postRaw(`${apiBase}/splits`, {
+      name: "Broken split",
+      receivers: [
+        { label: "Primary", address: receiver, shareBps: 5000 }
+      ]
+    }, apiKey);
+    assert.equal(badSplit.status, 400);
+
+    const intent = await post(`${apiBase}/payment-intents`, {
+      amount: "10.00",
+      receiver,
+      description: "Split checkout",
+      template: "split-payment",
+      metadata: {
+        splitId: split.id,
+        primaryReceiver: receiver,
+        shares: "record-only"
+      }
+    }, apiKey);
+    assert.equal(intent.template, "split-payment");
+    assert.equal(intent.metadata.splitId, split.id);
+
+    const settled = await post(`${apiBase}/payment-intents/${intent.id}/demo-settle`);
+    assert.equal(settled.intent.status, "paid");
+    assert.equal(settled.receipt.metadata.splitId, split.id);
+
+    const state = await get(`${apiBase}/state`, apiKey);
+    assert.ok(state.splits.some((item: { id: string }) => item.id === split.id));
+    assert.ok(state.logs.some((log: { type: string; paymentIntentId?: string }) => log.type === "split.recorded" && log.paymentIntentId === intent.id));
+
+    const projectClient = new ArcFlow({ baseUrl: apiBase, apiKey });
+    const sdkSplit = await projectClient.splits.create({
+      name: "SDK split",
+      receivers: [
+        { label: "Primary", address: receiver, shareBps: 6000 },
+        { label: "Partner", address: wrongReceiver, shareBps: 4000 }
+      ]
+    });
+    assert.equal(sdkSplit.name, "SDK split");
+  });
 });
 
 async function post(url: string, body?: unknown, apiKey?: string) {

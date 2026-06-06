@@ -58,6 +58,20 @@ export type WebhookDelivery = {
   createdAt: string;
 };
 
+export type SplitReceiver = {
+  address: `0x${string}`;
+  shareBps: number;
+  label?: string;
+};
+
+export type Split = {
+  id: string;
+  projectId: string;
+  name: string;
+  receivers: SplitReceiver[];
+  createdAt: string;
+};
+
 export type EventLog = {
   id: string;
   projectId?: string;
@@ -96,11 +110,12 @@ export type CreatedProject = {
   apiKey: CreatedApiKey;
 };
 
-export type TemplateKey = "payment-link" | "access-unlock" | "invoice";
+export type TemplateKey = "payment-link" | "access-unlock" | "invoice" | "split-payment";
 
 export type DashboardState = {
   currentProjectId: string;
   projects: Project[];
+  splits: Split[];
   paymentIntents: PaymentIntent[];
   receipts: Receipt[];
   webhooks: WebhookEndpoint[];
@@ -115,6 +130,11 @@ export type CreateIntentInput = {
   description: string;
   template: TemplateKey;
   metadata?: Record<string, string>;
+};
+
+export type CreateSplitInput = {
+  name: string;
+  receivers: SplitReceiver[];
 };
 
 export type ConfirmPaymentInput = {

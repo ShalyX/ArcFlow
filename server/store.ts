@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import initSqlJs, { type Database, type SqlValue } from "sql.js";
-import type { ApiKey, DashboardState, EventLog, PaymentIntent, Project, Receipt, WebhookDelivery, WebhookEndpoint } from "../src/shared/types";
+import type { ApiKey, CreateSplitInput, DashboardState, EventLog, PaymentIntent, Project, Receipt, Split, SplitReceiver, WebhookDelivery, WebhookEndpoint } from "../src/shared/types";
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
@@ -43,6 +43,14 @@ function migrate() {
       receipt_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS splits (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      receivers TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS receipts (
@@ -120,6 +128,7 @@ function migrate() {
     );
   `);
   addColumnIfMissing("payment_intents", "project_id", "TEXT");
+  addColumnIfMissing("splits", "project_id", "TEXT");
   addColumnIfMissing("receipts", "project_id", "TEXT");
   addColumnIfMissing("webhooks", "project_id", "TEXT");
   addColumnIfMissing("webhook_deliveries", "project_id", "TEXT");
@@ -159,7 +168,7 @@ function seedDefaultProject() {
 }
 
 function backfillProjectIds() {
-  for (const table of ["payment_intents", "receipts", "webhooks", "webhook_deliveries", "event_logs", "api_keys"]) {
+  for (const table of ["payment_intents", "splits", "receipts", "webhooks", "webhook_deliveries", "event_logs", "api_keys"]) {
     db.run(`UPDATE ${table} SET project_id = ? WHERE project_id IS NULL OR project_id = ''`, [DEFAULT_PROJECT_ID]);
   }
 }
@@ -236,6 +245,16 @@ function mapReceipt(row: Row): Receipt {
     receiptUrl: asText(row.receipt_url),
     metadata: parseJson<Record<string, string>>(row.metadata, {}),
     issuedAt: asText(row.issued_at)
+  };
+}
+
+function mapSplit(row: Row): Split {
+  return {
+    id: asText(row.id),
+    projectId: asText(row.project_id) || DEFAULT_PROJECT_ID,
+    name: asText(row.name),
+    receivers: parseJson<SplitReceiver[]>(row.receivers, []),
+    createdAt: asText(row.created_at)
   };
 }
 
@@ -321,6 +340,7 @@ export function getState(projectId = DEFAULT_PROJECT_ID): DashboardState {
   return {
     currentProjectId: projectId,
     projects: listProjects(),
+    splits: all("SELECT * FROM splits WHERE project_id = ? ORDER BY created_at DESC", [projectId], mapSplit),
     paymentIntents: all("SELECT * FROM payment_intents WHERE project_id = ? ORDER BY created_at DESC", [projectId], mapIntent),
     receipts: all("SELECT * FROM receipts WHERE project_id = ? ORDER BY issued_at DESC", [projectId], mapReceipt),
     webhooks: all("SELECT * FROM webhooks WHERE project_id = ? ORDER BY created_at DESC", [projectId], mapWebhook),
@@ -372,6 +392,40 @@ export function createProject(name: string) {
   );
   persist();
   return project;
+}
+
+export function createSplit(input: CreateSplitInput & { projectId?: string }) {
+  const projectId = input.projectId || DEFAULT_PROJECT_ID;
+  const receivers = validateSplitReceivers(input.receivers);
+  const split: Split = {
+    id: id("split"),
+    projectId,
+    name: input.name.trim() || "Untitled split",
+    receivers,
+    createdAt: now()
+  };
+  db.run("INSERT INTO splits (id, project_id, name, receivers, created_at) VALUES (?, ?, ?, ?, ?)", [
+    split.id,
+    split.projectId,
+    split.name,
+    JSON.stringify(split.receivers),
+    split.createdAt
+  ]);
+  addLog(
+    {
+      projectId,
+      level: "success",
+      type: "split.created",
+      message: `Created split ${split.name}.`
+    },
+    false
+  );
+  persist();
+  return split;
+}
+
+export function getSplit(splitId: string) {
+  return getOne("SELECT * FROM splits WHERE id = ?", [splitId], mapSplit);
 }
 
 export function createApiKey(name: string, projectId = DEFAULT_PROJECT_ID) {
@@ -819,6 +873,34 @@ function createProjectSlug(name: string) {
     .replace(/(^-|-$)/g, "")
     .slice(0, 36) || "project";
   return `${base}-${randomUUID().replaceAll("-", "").slice(0, 6)}`;
+}
+
+function validateSplitReceivers(receivers: SplitReceiver[]) {
+  if (!Array.isArray(receivers) || receivers.length === 0) {
+    throw new Error("Add at least one split receiver.");
+  }
+
+  const cleaned = receivers.map((receiver) => ({
+    address: receiver.address,
+    shareBps: Number(receiver.shareBps),
+    label: receiver.label?.trim() || undefined
+  }));
+
+  for (const receiver of cleaned) {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(receiver.address)) {
+      throw new Error("Each split receiver must be a valid EVM address.");
+    }
+    if (!Number.isInteger(receiver.shareBps) || receiver.shareBps <= 0) {
+      throw new Error("Each split receiver share must be positive basis points.");
+    }
+  }
+
+  const totalBps = cleaned.reduce((sum, receiver) => sum + receiver.shareBps, 0);
+  if (totalBps !== 10_000) {
+    throw new Error("Split shares must total 100%.");
+  }
+
+  return cleaned;
 }
 
 function createWebhookSecret() {

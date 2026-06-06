@@ -2,12 +2,14 @@ import type {
   ApiKey,
   ConfirmPaymentInput,
   CreateIntentInput,
+  CreateSplitInput,
   CreatedApiKey,
   CreatedProject,
   DashboardState,
   PaymentIntent,
   Project,
   Receipt,
+  Split,
   WebhookEndpoint
 } from "../../../src/shared/types";
 
@@ -17,7 +19,7 @@ export type ArcFlowConfig = {
   fetcher?: typeof fetch;
 };
 
-export type { ApiKey, ConfirmPaymentInput, CreateIntentInput, CreatedApiKey, CreatedProject, DashboardState, PaymentIntent, Project, Receipt, WebhookEndpoint };
+export type { ApiKey, ConfirmPaymentInput, CreateIntentInput, CreateSplitInput, CreatedApiKey, CreatedProject, DashboardState, PaymentIntent, Project, Receipt, Split, WebhookEndpoint };
 
 export type PaymentConfirmation = {
   intent: PaymentIntent;

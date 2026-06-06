@@ -13,6 +13,7 @@ import {
   createPaymentIntent,
   createProject,
   createReceipt,
+  createSplit,
   DEFAULT_PROJECT_ID,
   DEMO_MERCHANT_WEBHOOK_URL,
   deleteWebhook,
@@ -21,6 +22,7 @@ import {
   getWebhookDelivery,
   getPaymentIntent,
   getReceipt,
+  getSplit,
   getIntentByTxHash,
   getReceiptByTxHash,
   getState,
@@ -114,6 +116,7 @@ app.post("/api/payment-intents", requireApiKey, (request, response) => {
   try {
     if (!body.description?.trim()) throw new Error("Description is required.");
     if (!validateIntentAddress(body.receiver)) throw new Error("Receiver must be a valid Arc EVM address.");
+    validateSplitMetadata(body.metadata, projectId);
 
     const intent = createPaymentIntent({
       projectId,
@@ -162,6 +165,7 @@ app.post("/api/payment-intents/:id/confirm", async (request, response) => {
       metadata: intent.metadata
     });
     markIntentPaid(intent.id, verified.txHash, receipt.id);
+    recordSplitInstruction(intent.id, intent.projectId, receipt.id, intent.metadata);
     const paidIntent = getPaymentIntent(intent.id) || intent;
     await deliverWebhooks({
       type: "payment_intent.paid",
@@ -206,6 +210,7 @@ app.post("/api/payment-intents/:id/demo-settle", async (request, response) => {
     metadata: intent.metadata
   });
   markIntentPaid(intent.id, receipt.txHash, receipt.id);
+  recordSplitInstruction(intent.id, intent.projectId, receipt.id, intent.metadata);
   const paidIntent = getPaymentIntent(intent.id) || intent;
   addLog({
     level: "success",
@@ -236,6 +241,18 @@ app.post("/api/webhooks", requireApiKey, (request, response) => {
     response.status(201).json(webhook);
   } catch (error) {
     response.status(400).json({ error: error instanceof Error ? error.message : "Invalid webhook endpoint." });
+  }
+});
+
+app.post("/api/splits", requireApiKey, (request, response) => {
+  try {
+    const split = createSplit({
+      ...(request.body as { name: string; receivers: [] }),
+      projectId: currentProjectId(request, response)
+    });
+    response.status(201).json(split);
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : "Invalid split." });
   }
 });
 
@@ -394,6 +411,30 @@ function parseWebhookInput(body: unknown, partial: boolean) {
   }
 
   return result;
+}
+
+function validateSplitMetadata(metadata: Record<string, string> | undefined, projectId: string) {
+  const splitId = metadata?.splitId;
+  if (!splitId) return;
+  const split = getSplit(splitId);
+  if (!split || split.projectId !== projectId) {
+    throw new Error("Split not found for this project.");
+  }
+}
+
+function recordSplitInstruction(paymentIntentId: string, projectId: string, receiptId: string, metadata: Record<string, string>) {
+  const splitId = metadata.splitId;
+  if (!splitId) return;
+  const split = getSplit(splitId);
+  if (!split || split.projectId !== projectId) return;
+  addLog({
+    projectId,
+    level: "info",
+    type: "split.recorded",
+    message: `Recorded pending payout instructions for split ${split.name}.`,
+    paymentIntentId,
+    receiptId
+  });
 }
 
 function requireApiKey(request: express.Request, response: express.Response, next: express.NextFunction) {

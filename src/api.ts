@@ -1,4 +1,4 @@
-import type { ApiKey, ConfirmPaymentInput, CreateIntentInput, CreatedApiKey, CreatedProject, DashboardState, PaymentIntent, Receipt, WebhookEndpoint } from "./shared/types";
+import type { ApiKey, ConfirmPaymentInput, CreateIntentInput, CreateSplitInput, CreatedApiKey, CreatedProject, DashboardState, PaymentIntent, Receipt, Split, WebhookEndpoint } from "./shared/types";
 
 const apiKeyStorageKey = "arcflow.apiKey";
 const projectKeyStorageKey = "arcflow.projectKeys";
@@ -82,6 +82,13 @@ export function revokeApiKey(id: string) {
 
 export function createPaymentIntent(input: CreateIntentInput) {
   return request<PaymentIntent>("/payment-intents", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function createSplit(input: CreateSplitInput) {
+  return request<Split>("/splits", {
     method: "POST",
     body: JSON.stringify(input)
   });

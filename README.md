@@ -20,12 +20,13 @@ This first build focuses on the core product:
 - Demo seed/reset controls
 - Local API key authentication
 - Project-scoped payment trails
+- Record-only split payment instructions
 
 The product question is simple:
 
 > What happened after money moved?
 
-Later modules can extend the same surface with splits, subscriptions, agent spend controls, and credibility scoring.
+Later modules can extend the same surface with subscriptions, agent spend controls, and credibility scoring.
 
 ## Why ArcFlow?
 
@@ -58,7 +59,7 @@ checkout link -> wallet payment -> verified receipt -> signed webhook -> merchan
 ArcFlow
   SDK/components      @arcflow/sdk, @arcflow/react, @arcflow/webhooks
   Receipts            Proof and accounting records
-  Templates           Payment link, access unlock, invoice
+  Templates           Payment link, access unlock, invoice, split payment
   Credibility         Later data layer
 ```
 
@@ -389,7 +390,7 @@ Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, dup
 
 ## Roadmap
 
-- Splits: route revenue to multiple receivers after settlement.
+- Splits: record payout instructions for multiple receivers after settlement. Payout automation comes later.
 - Subscriptions: recurring intents, retries, and access status webhooks.
 - Agent spend controls: policy wallets, per-action caps, and spend logs.
 - Credibility: payment and fulfillment history as a reputation graph.

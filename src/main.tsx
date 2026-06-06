@@ -31,6 +31,7 @@ import {
   createApiKey,
   createPaymentIntent,
   createProject,
+  createSplit,
   createWebhook,
   deleteWebhook,
   demoSettlePayment,
@@ -50,14 +51,15 @@ import {
   updateWebhook
 } from "./api";
 import { ARC_TESTNET, formatUsdc } from "./shared/arc";
-import type { CreateIntentInput, DashboardState, EventLog, PaymentIntent, Receipt, TemplateKey, WebhookEndpoint } from "./shared/types";
+import type { CreateIntentInput, DashboardState, EventLog, PaymentIntent, Receipt, SplitReceiver, TemplateKey, WebhookEndpoint } from "./shared/types";
 import { connectAndPayIntent, type WalletCheckoutStep } from "./walletCheckout";
 import "./styles.css";
 
 const templateOptions: Array<{ key: TemplateKey; title: string; copy: string; icon: React.ElementType }> = [
   { key: "payment-link", title: "Payment link", copy: "Hosted checkout and receipt for a one-time USDC payment.", icon: Link2 },
   { key: "access-unlock", title: "Access unlock", copy: "Confirm payment, send webhook, unlock API or gated content.", icon: LockKeyhole },
-  { key: "invoice", title: "Invoice", copy: "Attach customer and invoice metadata to a verifiable payment.", icon: FileText }
+  { key: "invoice", title: "Invoice", copy: "Attach customer and invoice metadata to a verifiable payment.", icon: FileText },
+  { key: "split-payment", title: "Split payment", copy: "Record pending payout instructions after settlement.", icon: Split }
 ];
 
 const roadmap = [
@@ -70,6 +72,7 @@ const roadmap = [
 const initialState: DashboardState = {
   currentProjectId: "proj_default",
   projects: [],
+  splits: [],
   paymentIntents: [],
   receipts: [],
   webhooks: [],
@@ -168,6 +171,7 @@ function Dashboard({
           <a href="#webhooks"><Webhook size={18} /> Events</a>
           <a href="#logs"><TerminalSquare size={18} /> Logs</a>
           <a href="#config"><Code2 size={18} /> Config</a>
+          <a href="#splits"><Split size={18} /> Splits</a>
           <a href="#templates"><Boxes size={18} /> Templates</a>
         </nav>
         <div className="network-panel">
@@ -284,6 +288,11 @@ function Dashboard({
         <section id="config" className="section-band">
           <SectionTitle icon={Code2} title="Developer Config" />
           <DeveloperConfig apiKeys={state.apiKeys} onRefresh={onRefresh} />
+        </section>
+
+        <section id="splits" className="section-band">
+          <SectionTitle icon={Split} title="Splits" />
+          <SplitsPanel splits={state.splits} onRefresh={onRefresh} />
         </section>
 
         <section id="templates" className="section-band">
@@ -797,6 +806,133 @@ function DeveloperConfig({ apiKeys, onRefresh }: { apiKeys: DashboardState["apiK
             </button>
           </article>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; onRefresh: () => Promise<void> }) {
+  const [name, setName] = useState("Creator split");
+  const [receivers, setReceivers] = useState([
+    { label: "Primary", address: "0x0000000000000000000000000000000000000001", shareBps: 7000 },
+    { label: "Partner", address: "0x0000000000000000000000000000000000000002", shareBps: 3000 }
+  ]);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
+  function updateReceiver(index: number, field: "label" | "address" | "shareBps", value: string) {
+    setReceivers((current) => current.map((receiver, itemIndex) => {
+      if (itemIndex !== index) return receiver;
+      return {
+        ...receiver,
+        [field]: field === "shareBps" ? Math.round(Number(value) * 100) : value
+      };
+    }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy("create");
+    setError("");
+    try {
+      await createSplit({ name, receivers: receivers as SplitReceiver[] });
+      await onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create split.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function createSplitIntent(splitId: string, primaryReceiver: string) {
+    setBusy(`intent-${splitId}`);
+    setError("");
+    try {
+      await createPaymentIntent({
+        amount: "10.00",
+        receiver: primaryReceiver as `0x${string}`,
+        description: "Split payment checkout",
+        template: "split-payment",
+        metadata: {
+          splitId,
+          primaryReceiver,
+          shares: "record-only"
+        }
+      });
+      await onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create split intent.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="split-manager">
+      <form className="panel compact-panel" onSubmit={submit}>
+        <div className="panel-heading">
+          <Split size={20} />
+          <div>
+            <h2>Create Split</h2>
+            <p>Record payout instructions for future settlement.</p>
+          </div>
+        </div>
+        <label>
+          Name
+          <input value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <div className="split-receivers">
+          {receivers.map((receiver, index) => (
+            <div className="split-receiver-row" key={index}>
+              <input value={receiver.label} onChange={(event) => updateReceiver(index, "label", event.target.value)} placeholder="Label" />
+              <input value={receiver.address} onChange={(event) => updateReceiver(index, "address", event.target.value)} placeholder="0x..." />
+              <input value={(receiver.shareBps / 100).toString()} onChange={(event) => updateReceiver(index, "shareBps", event.target.value)} placeholder="Share %" />
+              <button className="icon-button compact danger-button" type="button" onClick={() => setReceivers((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label="Remove receiver" title="Remove receiver">
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button className="tiny-button" type="button" onClick={() => setReceivers((current) => [...current, { label: "", address: "0x0000000000000000000000000000000000000001", shareBps: 0 }])}>
+          <Plus size={15} />
+          Add receiver
+        </button>
+        {error && <div className="error">{error}</div>}
+        <button className="primary-button" disabled={Boolean(busy)}>
+          {busy === "create" ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
+          Create split
+        </button>
+        <div className="field-note">Shares must total 100%. ArcFlow records instructions only; payout automation comes later.</div>
+      </form>
+
+      <div className="api-key-list">
+        {splits.map((split) => (
+          <article className="webhook-card" key={split.id}>
+            <div className="line-card">
+              <Split size={19} />
+              <div>
+                <strong>{split.name}</strong>
+                <span>{split.id} · pending payout instructions</span>
+              </div>
+            </div>
+            <div className="split-receiver-list">
+              {split.receivers.map((receiver) => (
+                <div key={`${split.id}-${receiver.address}-${receiver.shareBps}`}>
+                  <span>{receiver.label || "Receiver"}</span>
+                  <code>{receiver.address}</code>
+                  <strong>{(receiver.shareBps / 100).toFixed(2)}%</strong>
+                </div>
+              ))}
+            </div>
+            <div className="webhook-actions">
+              <button className="tiny-button" type="button" onClick={() => createSplitIntent(split.id, split.receivers[0]?.address || "0x0000000000000000000000000000000000000001")} disabled={Boolean(busy)}>
+                {busy === `intent-${split.id}` ? <Loader2 className="spin" size={15} /> : <Send size={15} />}
+                Create split intent
+              </button>
+            </div>
+          </article>
+        ))}
+        {splits.length === 0 && <div className="empty-state">Splits record how funds should be allocated after a verified payment. No payout automation yet.</div>}
       </div>
     </div>
   );

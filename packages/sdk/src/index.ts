@@ -3,11 +3,13 @@ import type {
   ArcFlowConfig,
   ConfirmPaymentInput,
   CreateIntentInput,
+  CreateSplitInput,
   CreatedApiKey,
   CreatedProject,
   DashboardState,
   PaymentConfirmation,
   PaymentIntent,
+  Split,
   WebhookEndpoint
 } from "./types";
 
@@ -38,6 +40,10 @@ export class ArcFlow {
   apiKeys = {
     create: (name: string) => this.request<CreatedApiKey>("/api-keys", { method: "POST", body: { name } }),
     revoke: (id: string) => this.request<ApiKey>(`/api-keys/${id}`, { method: "DELETE" })
+  };
+
+  splits = {
+    create: (input: CreateSplitInput) => this.request<Split>("/splits", { method: "POST", body: input })
   };
 
   webhooks = {
@@ -90,11 +96,13 @@ export type {
   ArcFlowConfig,
   ConfirmPaymentInput,
   CreateIntentInput,
+  CreateSplitInput,
   CreatedApiKey,
   CreatedProject,
   DashboardState,
   PaymentConfirmation,
   PaymentIntent,
+  Split,
   WebhookEndpoint
 };
 export { verifyArcFlowWebhook, signArcFlowWebhook } from "./webhooks";
