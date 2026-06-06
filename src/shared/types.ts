@@ -64,6 +64,18 @@ export type SplitReceiver = {
   label?: string;
 };
 
+export type SplitAllocation = SplitReceiver & {
+  amount: string;
+};
+
+export type SplitPlan = {
+  splitId: string;
+  name: string;
+  settlementReceiver: `0x${string}`;
+  totalAmount: string;
+  allocations: SplitAllocation[];
+};
+
 export type Split = {
   id: string;
   projectId: string;

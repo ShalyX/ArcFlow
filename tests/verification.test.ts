@@ -367,14 +367,38 @@ describe("payment intent API guards", () => {
     assert.equal(intent.receiver, splitSettlementReceiver);
     assert.notEqual(intent.receiver, split.receivers[0].address);
     assert.equal(intent.metadata.splitId, split.id);
+    const intentSplitPlan = JSON.parse(intent.metadata.splitPlan);
+    assert.equal(intentSplitPlan.splitId, split.id);
+    assert.equal(intentSplitPlan.settlementReceiver, splitSettlementReceiver);
+    assert.equal(intentSplitPlan.totalAmount, expectedAmount);
+    assert.deepEqual(intentSplitPlan.allocations.map((allocation: { address: string; amount: string; shareBps: number }) => ({
+      address: allocation.address,
+      amount: allocation.amount,
+      shareBps: allocation.shareBps
+    })), [
+      { address: receiver, amount: "7000000", shareBps: 7000 },
+      { address: wrongReceiver, amount: "3000000", shareBps: 3000 }
+    ]);
 
     const settled = await post(`${apiBase}/payment-intents/${intent.id}/demo-settle`);
     assert.equal(settled.intent.status, "paid");
     assert.equal(settled.receipt.metadata.splitId, split.id);
+    const receiptSplitPlan = JSON.parse(settled.receipt.metadata.splitPlan);
+    assert.deepEqual(receiptSplitPlan.allocations, intentSplitPlan.allocations);
 
     const state = await get(`${apiBase}/state`, apiKey);
     assert.ok(state.splits.some((item: { id: string }) => item.id === split.id));
-    assert.ok(state.logs.some((log: { type: string; paymentIntentId?: string }) => log.type === "split.recorded" && log.paymentIntentId === intent.id));
+    assert.ok(state.logs.some((log: { type: string; paymentIntentId?: string; message: string }) =>
+      log.type === "split.recorded" &&
+      log.paymentIntentId === intent.id &&
+      log.message.includes("70% to Primary") &&
+      log.message.includes("30% to Partner")
+    ));
+    assert.ok(state.webhookDeliveries.some((delivery: { eventType: string; payload?: { data?: { split?: { splitId?: string; allocations?: unknown[] } } } }) =>
+      delivery.eventType === "payment_intent.paid" &&
+      delivery.payload?.data?.split?.splitId === split.id &&
+      delivery.payload.data.split.allocations?.length === 2
+    ));
 
     const projectClient = new ArcFlow({ baseUrl: apiBase, apiKey });
     const sdkSplit = await projectClient.splits.create({

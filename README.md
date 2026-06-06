@@ -20,7 +20,7 @@ This first build focuses on the core product:
 - Demo seed/reset controls
 - Local API key authentication
 - Project-scoped payment trails
-- Record-only split payment instructions
+- Accounting-first split payment plans
 
 The product question is simple:
 
@@ -390,7 +390,7 @@ Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, dup
 
 ## Roadmap
 
-- Splits: collect into a settlement wallet and record payout instructions for multiple receivers after settlement. Payout automation comes later.
+- Splits: verify total payment into a settlement wallet, then show split recipients on receipts, webhooks, and logs. Payout automation comes later.
 - Subscriptions: recurring intents, retries, and access status webhooks.
 - Agent spend controls: policy wallets, per-action caps, and spend logs.
 - Credibility: payment and fulfillment history as a reputation graph.

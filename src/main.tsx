@@ -51,7 +51,7 @@ import {
   updateWebhook
 } from "./api";
 import { ARC_TESTNET, formatUsdc } from "./shared/arc";
-import type { CreateIntentInput, DashboardState, EventLog, PaymentIntent, Receipt, SplitReceiver, TemplateKey, WebhookEndpoint } from "./shared/types";
+import type { CreateIntentInput, DashboardState, EventLog, PaymentIntent, Receipt, SplitPlan, SplitReceiver, TemplateKey, WebhookEndpoint } from "./shared/types";
 import { connectAndPayIntent, type WalletCheckoutStep } from "./walletCheckout";
 import "./styles.css";
 
@@ -59,11 +59,11 @@ const templateOptions: Array<{ key: TemplateKey; title: string; copy: string; ic
   { key: "payment-link", title: "Payment link", copy: "Hosted checkout and receipt for a one-time USDC payment.", icon: Link2 },
   { key: "access-unlock", title: "Access unlock", copy: "Confirm payment, send webhook, unlock API or gated content.", icon: LockKeyhole },
   { key: "invoice", title: "Invoice", copy: "Attach customer and invoice metadata to a verifiable payment.", icon: FileText },
-  { key: "split-payment", title: "Split payment", copy: "Record pending payout instructions after settlement.", icon: Split }
+  { key: "split-payment", title: "Split payment", copy: "Attach an accounting split to a verified payment.", icon: Split }
 ];
 
 const roadmap = [
-  { title: "Splits", icon: Split, copy: "Route revenue to multiple receivers after settlement." },
+  { title: "Splits", icon: Split, copy: "Record who should receive what after settlement." },
   { title: "Subscriptions", icon: BellRing, copy: "Recurring intents, retries, and access status webhooks." },
   { title: "Agent spend controls", icon: KeyRound, copy: "Policy wallets, per-action caps, and spend logs." },
   { title: "Credibility", icon: BadgeCheck, copy: "Payment and fulfillment history becomes a reputation graph." }
@@ -875,7 +875,7 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
           <Split size={20} />
           <div>
             <h2>Create Split</h2>
-            <p>Record payout instructions for future settlement.</p>
+            <p>Create an accounting plan for a verified payment.</p>
           </div>
         </div>
         <label>
@@ -1196,6 +1196,7 @@ function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: D
   const [receipt, setReceipt] = useState<Receipt | null>(state.receipts.find((item) => item.id === receiptId) || null);
   const [message, setMessage] = useState("");
   const intent = receipt ? state.paymentIntents.find((item) => item.id === receipt.paymentIntentId) : undefined;
+  const splitPlan = receipt ? parseReceiptSplitPlan(receipt) : undefined;
 
   useEffect(() => {
     getReceipt(receiptId).then(setReceipt).catch((error) => setMessage(error.message));
@@ -1226,6 +1227,22 @@ function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: D
               <div><dt>Tx hash</dt><dd>{receipt.txHash}</dd></div>
               <div><dt>Issued</dt><dd>{new Date(receipt.issuedAt).toLocaleString()}</dd></div>
             </dl>
+            {splitPlan && (
+              <div className="receipt-split">
+                <div>
+                  <strong>Split breakdown</strong>
+                  <span>{splitPlan.name} · collect to {splitPlan.settlementReceiver}</span>
+                </div>
+                <div className="split-receiver-list">
+                  {splitPlan.allocations.map((allocation) => (
+                    <div key={`${allocation.address}-${allocation.shareBps}-${allocation.amount}`}>
+                      <span>{allocation.label || allocation.address}</span>
+                      <strong>{formatUsdc(allocation.amount)} USDC · {allocation.shareBps / 100}%</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="receipt-actions">
               <button className="secondary-button" onClick={() => navigator.clipboard.writeText(absoluteUrl(receipt.receiptUrl))}>
                 <Copy size={17} /> Copy receipt link
@@ -1416,6 +1433,15 @@ function LogList({ logs }: { logs: EventLog[] }) {
       ))}
     </div>
   );
+}
+
+function parseReceiptSplitPlan(receipt: Receipt): SplitPlan | undefined {
+  if (!receipt.metadata.splitPlan) return undefined;
+  try {
+    return JSON.parse(receipt.metadata.splitPlan) as SplitPlan;
+  } catch {
+    return undefined;
+  }
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import "dotenv/config";
 import express from "express";
 import { parseUsdc } from "../src/shared/arc";
-import type { ConfirmPaymentInput, CreateIntentInput, CreateSplitInput } from "../src/shared/types";
+import type { ConfirmPaymentInput, CreateIntentInput, CreateSplitInput, Split, SplitAllocation, SplitPlan } from "../src/shared/types";
 import { validateIntentAddress, verifyArcUsdcTransfer } from "./arcVerifier";
 import {
   addLog,
@@ -116,15 +116,16 @@ app.post("/api/payment-intents", requireApiKey, (request, response) => {
   try {
     if (!body.description?.trim()) throw new Error("Description is required.");
     if (!validateIntentAddress(body.receiver)) throw new Error("Receiver must be a valid Arc EVM address.");
-    validateSplitMetadata(body.metadata, projectId);
+    const amount = parseUsdc(body.amount);
+    const metadata = resolveIntentMetadata(body.metadata, projectId, body.receiver, amount);
 
     const intent = createPaymentIntent({
       projectId,
-      amount: parseUsdc(body.amount),
+      amount,
       receiver: body.receiver,
       description: body.description.trim(),
       template: body.template || "payment-link",
-      metadata: body.metadata || {}
+      metadata
     });
 
     response.status(201).json(intent);
@@ -165,7 +166,8 @@ app.post("/api/payment-intents/:id/confirm", async (request, response) => {
       metadata: intent.metadata
     });
     markIntentPaid(intent.id, verified.txHash, receipt.id);
-    recordSplitInstruction(intent.id, intent.projectId, receipt.id, intent.metadata);
+    const splitPlan = parseSplitPlan(intent.metadata);
+    recordSplitInstruction(intent.id, intent.projectId, receipt.id, splitPlan);
     const paidIntent = getPaymentIntent(intent.id) || intent;
     await deliverWebhooks({
       type: "payment_intent.paid",
@@ -174,6 +176,7 @@ app.post("/api/payment-intents/:id/confirm", async (request, response) => {
         amount: intent.amount,
         txHash: verified.txHash,
         receiptUrl: receipt.receiptUrl,
+        ...(splitPlan ? { split: splitPlan } : {}),
         ...intent.metadata
       }
     }, intent.projectId);
@@ -210,7 +213,8 @@ app.post("/api/payment-intents/:id/demo-settle", async (request, response) => {
     metadata: intent.metadata
   });
   markIntentPaid(intent.id, receipt.txHash, receipt.id);
-  recordSplitInstruction(intent.id, intent.projectId, receipt.id, intent.metadata);
+  const splitPlan = parseSplitPlan(intent.metadata);
+  recordSplitInstruction(intent.id, intent.projectId, receipt.id, splitPlan);
   const paidIntent = getPaymentIntent(intent.id) || intent;
   addLog({
     level: "success",
@@ -228,6 +232,7 @@ app.post("/api/payment-intents/:id/demo-settle", async (request, response) => {
         amount: intent.amount,
         txHash: receipt.txHash,
         receiptUrl: receipt.receiptUrl,
+        ...(splitPlan ? { split: splitPlan } : {}),
         ...intent.metadata
       }
   }, intent.projectId);
@@ -413,9 +418,21 @@ function parseWebhookInput(body: unknown, partial: boolean) {
   return result;
 }
 
-function validateSplitMetadata(metadata: Record<string, string> | undefined, projectId: string) {
+function resolveIntentMetadata(metadata: Record<string, string> | undefined, projectId: string, receiver: `0x${string}`, amount: string) {
+  const baseMetadata = metadata || {};
+  const splitPlan = resolveSplitPlan(baseMetadata, projectId, receiver, amount);
+  if (!splitPlan) return baseMetadata;
+  return {
+    ...baseMetadata,
+    splitId: splitPlan.splitId,
+    settlementReceiver: splitPlan.settlementReceiver,
+    splitPlan: JSON.stringify(splitPlan)
+  };
+}
+
+function resolveSplitPlan(metadata: Record<string, string>, projectId: string, receiver: `0x${string}`, amount: string) {
   const splitId = metadata?.splitId;
-  if (!splitId) return;
+  if (!splitId) return undefined;
   const split = getSplit(splitId);
   if (!split || split.projectId !== projectId) {
     throw new Error("Split not found for this project.");
@@ -423,18 +440,50 @@ function validateSplitMetadata(metadata: Record<string, string> | undefined, pro
   if (metadata?.settlementReceiver && metadata.settlementReceiver.toLowerCase() !== split.settlementReceiver.toLowerCase()) {
     throw new Error("Split settlement receiver does not match the split configuration.");
   }
+  if (receiver.toLowerCase() !== split.settlementReceiver.toLowerCase()) {
+    throw new Error("Split payment receiver must be the split settlement receiver.");
+  }
+  return buildSplitPlan(split, amount);
 }
 
-function recordSplitInstruction(paymentIntentId: string, projectId: string, receiptId: string, metadata: Record<string, string>) {
-  const splitId = metadata.splitId;
-  if (!splitId) return;
-  const split = getSplit(splitId);
-  if (!split || split.projectId !== projectId) return;
+function buildSplitPlan(split: Split, totalAmount: string): SplitPlan {
+  const total = BigInt(totalAmount);
+  let allocated = 0n;
+  const allocations: SplitAllocation[] = split.receivers.map((receiver, index) => {
+    const isLast = index === split.receivers.length - 1;
+    const amount = isLast ? total - allocated : (total * BigInt(receiver.shareBps)) / 10000n;
+    allocated += amount;
+    return { ...receiver, amount: amount.toString() };
+  });
+
+  return {
+    splitId: split.id,
+    name: split.name,
+    settlementReceiver: split.settlementReceiver,
+    totalAmount,
+    allocations
+  };
+}
+
+function parseSplitPlan(metadata: Record<string, string>) {
+  if (!metadata.splitPlan) return undefined;
+  try {
+    return JSON.parse(metadata.splitPlan) as SplitPlan;
+  } catch {
+    return undefined;
+  }
+}
+
+function recordSplitInstruction(paymentIntentId: string, projectId: string, receiptId: string, splitPlan: SplitPlan | undefined) {
+  if (!splitPlan) return;
+  const breakdown = splitPlan.allocations
+    .map((allocation) => `${allocation.shareBps / 100}% to ${allocation.label || allocation.address}`)
+    .join(", ");
   addLog({
     projectId,
     level: "info",
     type: "split.recorded",
-    message: `Recorded pending payout instructions for split ${split.name}.`,
+    message: `Recorded split plan for ${splitPlan.name}: ${breakdown}.`,
     paymentIntentId,
     receiptId
   });

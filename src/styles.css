@@ -997,6 +997,29 @@ code {
   overflow-wrap: anywhere;
 }
 
+.receipt-split {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  background: #fffefa;
+}
+
+.receipt-split > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.receipt-split span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.receipt-split .split-receiver-list div {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .receipt-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

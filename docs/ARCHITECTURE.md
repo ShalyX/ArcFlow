@@ -106,7 +106,7 @@ ArcFlow seeds a default `Demo Merchant` project on boot and backfills legacy loc
 
 **Splits**
 
-Splits are record-only payout instructions. A split belongs to one project and contains a settlement receiver plus payout receiver addresses with basis-point shares totaling 100%. `split-payment` intents send the checkout payment to the settlement receiver and attach `splitId`, `settlementReceiver`, and `shares` metadata. When the intent settles, ArcFlow issues the receipt as usual and records `split.recorded`; it does not auto-payout funds in this MVP.
+Splits are accounting-first payout plans. A split belongs to one project and contains a settlement receiver plus payout receiver addresses with basis-point shares totaling 100%. `split-payment` intents verify the total USDC payment to the settlement receiver and attach `splitId`, `settlementReceiver`, and a JSON `splitPlan` metadata field containing each recipient and computed raw-USDC allocation. When the intent settles, ArcFlow issues the receipt with the split breakdown, includes a structured `split` object in the signed webhook payload, and records `split.recorded`; it does not auto-payout funds in this MVP.
 
 **Merchant Demo**
 
