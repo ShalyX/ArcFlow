@@ -397,6 +397,8 @@ Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, dup
 
 ## Revenue Split SDK Example
 
+See [docs/REVENUE_SPLITS.md](docs/REVENUE_SPLITS.md) for the full Revenue Split guide, including validation rules, receipt output, webhook metadata, and allocation math.
+
 ```ts
 await arcflow.paymentIntents.create({
   amount: "10",

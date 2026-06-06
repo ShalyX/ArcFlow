@@ -13,6 +13,10 @@ ArcFlow now supports accounting-first revenue split payment intents. Split inten
 - Added receipt copy explaining that automatic disbursement is not enabled in this MVP.
 - Expanded regression coverage for split validation and accounting metadata.
 
+## Revenue Split Guide
+
+See `docs/REVENUE_SPLITS.md` for the SDK example, receipt output, webhook payload shape, validation rules, and allocation math.
+
 ## Verification
 
 ```bash
