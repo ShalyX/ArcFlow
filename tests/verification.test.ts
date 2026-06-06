@@ -480,6 +480,7 @@ describe("payment intent API guards", () => {
         ...process.env,
         PORT: String(port),
         ARCFLOW_DB_PATH: testDb,
+        ARCFLOW_SPLITTER_ADDRESS: splitterAddress,
         WEBHOOK_SIGNING_SECRET: "local-dev-secret"
       },
       stdio: "ignore"
@@ -791,6 +792,39 @@ describe("payment intent API guards", () => {
       ]
     });
     assert.equal(sdkSplit.name, "SDK split");
+  });
+
+  it("creates executable split intents against the configured splitter contract", async () => {
+    const intent = await post(`${apiBase}/payment-intents`, {
+      amount: "10",
+      receiver: splitSettlementReceiver,
+      settlementReceiver: splitterAddress,
+      description: "Executable revenue split",
+      template: "revenue_split_executable",
+      metadata: { splitName: "Executable Revenue Split" },
+      split: [
+        { label: "Creator", recipient: receiver, percentage: 70 },
+        { label: "Contributor", recipient: wrongReceiver, percentage: 20 },
+        { label: "Platform", recipient: splitSettlementReceiver, percentage: 10 }
+      ]
+    }, apiKey);
+
+    const plan = JSON.parse(intent.metadata.splitPlan);
+    assert.equal(intent.template, "revenue_split_executable");
+    assert.equal(intent.receiver, splitterAddress);
+    assert.equal(plan.name, "Executable Revenue Split");
+    assert.equal(plan.settlementReceiver, splitterAddress);
+    assert.equal(plan.totalAmount, expectedAmount);
+    assert.deepEqual(plan.allocations.map((allocation: { label: string; address: string; amount: string; shareBps: number }) => ({
+      label: allocation.label,
+      address: allocation.address,
+      amount: allocation.amount,
+      shareBps: allocation.shareBps
+    })), [
+      { label: "Creator", address: receiver, amount: "7000000", shareBps: 7000 },
+      { label: "Contributor", address: wrongReceiver, amount: "2000000", shareBps: 2000 },
+      { label: "Platform", address: splitSettlementReceiver, amount: "1000000", shareBps: 1000 }
+    ]);
   });
 
   it("validates inline split inputs and deterministic raw allocations", async () => {

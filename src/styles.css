@@ -1043,6 +1043,10 @@ code {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.checkout-split {
+  background: #f8fffc;
+}
+
 .receipt-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -60,7 +60,8 @@ const templateOptions: Array<{ key: TemplateKey; title: string; copy: string; ic
   { key: "access-unlock", title: "Access unlock", copy: "Confirm payment, send webhook, unlock API or gated content.", icon: LockKeyhole },
   { key: "invoice", title: "Invoice", copy: "Attach customer and invoice metadata to a verifiable payment.", icon: FileText },
   { key: "split-payment", title: "Split payment", copy: "Attach an accounting split to a verified payment.", icon: Split },
-  { key: "revenue_split", title: "Revenue Split Plan", copy: "Accounting-only MVP for creator, contributor, and platform allocations.", icon: Split }
+  { key: "revenue_split", title: "Revenue Split Plan", copy: "Accounting-only MVP for creator, contributor, and platform allocations.", icon: Split },
+  { key: "revenue_split_executable", title: "Executable Revenue Split", copy: "Automatically split USDC between recipients during settlement.", icon: Split }
 ];
 
 const revenueSplitTemplate = {
@@ -107,6 +108,19 @@ const checkoutSteps: Array<{ key: CheckoutStatus; label: string }> = [
   { key: "verify-arcflow", label: "Verify with ArcFlow" },
   { key: "receipt-issued", label: "Receipt issued" }
 ];
+
+const executableSplitCheckoutSteps: Array<{ key: CheckoutStatus; label: string }> = [
+  { key: "connect-wallet", label: "Connect wallet" },
+  { key: "switch-network", label: "Switch to Arc Testnet" },
+  { key: "check-balance", label: "Check USDC balance" },
+  { key: "approve-split", label: "Approve USDC" },
+  { key: "execute-split", label: "Execute split" },
+  { key: "wait-confirmation", label: "Wait for confirmation" },
+  { key: "verify-arcflow", label: "Verify with ArcFlow" },
+  { key: "receipt-issued", label: "Receipt issued" }
+];
+
+const configuredSplitterAddress = (import.meta.env.VITE_ARCFLOW_SPLITTER_ADDRESS || ARC_TESTNET.splitterAddress) as `0x${string}`;
 
 function absoluteUrl(path: string) {
   return new URL(path, window.location.origin).toString();
@@ -674,7 +688,8 @@ function DeveloperConfig({ apiKeys, onRefresh }: { apiKeys: DashboardState["apiK
     { label: "API key header", value: "x-arcflow-api-key" },
     { label: "Webhook header", value: "x-arcflow-signature" },
     { label: "Arc RPC", value: ARC_TESTNET.rpcUrl },
-    { label: "USDC token", value: ARC_TESTNET.usdcAddress }
+    { label: "USDC token", value: ARC_TESTNET.usdcAddress },
+    { label: "Splitter contract", value: configuredSplitterAddress }
   ];
 
   async function createKey(event: React.FormEvent) {
@@ -965,14 +980,16 @@ function IntentCreator({ onCreated }: { onCreated: () => Promise<void> }) {
   const [error, setError] = useState("");
 
   function setTemplate(template: TemplateKey) {
-    if (template === "revenue_split") {
+    if (template === "revenue_split" || template === "revenue_split_executable") {
+      const executable = template === "revenue_split_executable";
+      const splitName = executable ? "Executable Revenue Split" : "Revenue Split Plan";
       setForm({
         amount: "10.00",
-        receiver: revenueSplitTemplate.settlementReceiver,
-        settlementReceiver: revenueSplitTemplate.settlementReceiver,
-        description: "Revenue split plan demo",
+        receiver: executable ? configuredSplitterAddress : revenueSplitTemplate.settlementReceiver,
+        settlementReceiver: executable ? configuredSplitterAddress : revenueSplitTemplate.settlementReceiver,
+        description: executable ? "Executable revenue split demo" : "Revenue split plan demo",
         template,
-        metadata: { splitName: "Revenue Split Plan" },
+        metadata: { splitName, splitMode: executable ? "executable" : "accounting" },
         split: revenueSplitTemplate.split
       });
       return;
@@ -1023,12 +1040,12 @@ function IntentCreator({ onCreated }: { onCreated: () => Promise<void> }) {
         Receiver
         <input value={form.receiver || ""} onChange={(event) => setForm({ ...form, receiver: event.target.value as `0x${string}` })} />
       </label>
-      {form.template === "revenue_split" && form.split && (
+      {(form.template === "revenue_split" || form.template === "revenue_split_executable") && form.split && (
         <div className="revenue-template">
-          <strong>Revenue Split Plan</strong>
-          <small>Accounting-only MVP</small>
-          <span>Settlement wallet receives: {form.amount} USDC</span>
-          <span>Recorded split plan:</span>
+          <strong>{form.template === "revenue_split_executable" ? "Executable Revenue Split" : "Revenue Split Plan"}</strong>
+          <small>{form.template === "revenue_split_executable" ? "Onchain settlement through ArcFlowSplitter" : "Accounting-only MVP"}</small>
+          <span>{form.template === "revenue_split_executable" ? `Settlement contract: ${configuredSplitterAddress}` : `Settlement wallet receives: ${form.amount} USDC`}</span>
+          <span>{form.template === "revenue_split_executable" ? "Recipients paid onchain:" : "Recorded split plan:"}</span>
           <div className="split-receiver-list">
             {form.split.map((recipient) => (
               <div key={`${recipient.recipient}-${recipient.percentage}`}>
@@ -1037,7 +1054,7 @@ function IntentCreator({ onCreated }: { onCreated: () => Promise<void> }) {
               </div>
             ))}
           </div>
-          <small>This MVP records the split plan but does not execute onchain disbursement yet.</small>
+          <small>{form.template === "revenue_split_executable" ? "Customer approves USDC, calls ArcFlowSplitter, and ArcFlow verifies exact recipient transfers before issuing the receipt." : "This MVP records the split plan but does not execute onchain disbursement yet."}</small>
         </div>
       )}
       {error && <div className="error">{error}</div>}
@@ -1090,6 +1107,8 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
   const [walletAddress, setWalletAddress] = useState("");
   const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus>("idle");
   const [busy, setBusy] = useState(false);
+  const executableSplit = intent?.template === "revenue_split_executable";
+  const splitPlan = intent ? parseIntentSplitPlan(intent) : undefined;
 
   useEffect(() => {
     getPaymentIntent(paymentIntentId).then(setIntent).catch((error) => setMessage(error.message));
@@ -1135,13 +1154,13 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
     if (!intent) return;
     setBusy(true);
     setCheckoutStatus("connect-wallet");
-    setMessage("Connect your wallet, approve Arc Testnet, then confirm the USDC transfer.");
+    setMessage(executableSplit ? "Connect your wallet, approve USDC, then execute the split settlement." : "Connect your wallet, approve Arc Testnet, then confirm the USDC transfer.");
     try {
       const payment = await connectAndPayIntent(intent, { onStep: setCheckoutStatus });
       setWalletAddress(payment.account);
       setTxHash(payment.txHash);
       setCheckoutStatus("verify-arcflow");
-      setMessage("Transfer confirmed on Arc. Issuing ArcFlow receipt...");
+      setMessage(executableSplit ? "Split settlement confirmed on Arc. Issuing ArcFlow receipt..." : "Transfer confirmed on Arc. Issuing ArcFlow receipt...");
       await confirmPayment(intent.id, { txHash: payment.txHash });
       setIntent(await getPaymentIntent(intent.id));
       setCheckoutStatus("receipt-issued");
@@ -1168,17 +1187,32 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
               </div>
             </div>
             <div className="payment-box">
-              <span>Send ERC-20 USDC to</span>
-              <code>{intent.receiver}</code>
+              <span>{executableSplit ? "Settlement contract" : "Send ERC-20 USDC to"}</span>
+              <code>{executableSplit ? configuredSplitterAddress : intent.receiver}</code>
               <small>USDC token: {ARC_TESTNET.usdcAddress}</small>
+              {executableSplit && <small>Wallet flow: approve USDC, then call ArcFlowSplitter.payAndSplit(...).</small>}
             </div>
+            {executableSplit && splitPlan && (
+              <div className="revenue-template checkout-split">
+                <strong>Executable Revenue Split</strong>
+                <small>Automatically split USDC between recipients during settlement.</small>
+                <div className="split-receiver-list">
+                  {splitPlan.allocations.map((allocation) => (
+                    <div key={`${allocation.address}-${allocation.amount}`}>
+                      <span>{allocation.label || allocation.address}</span>
+                      <strong>{formatUsdc(allocation.amount)} USDC · {allocation.shareBps / 100}%</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <button className="secondary-button full-width" onClick={() => navigator.clipboard.writeText(window.location.href)}>
               <Copy size={17} /> Copy checkout link
             </button>
-            <CheckoutStepper status={intent.status === "paid" ? "receipt-issued" : checkoutStatus} />
+            <CheckoutStepper status={intent.status === "paid" ? "receipt-issued" : checkoutStatus} executableSplit={Boolean(executableSplit)} />
             <button className="primary-button full-width" onClick={payWithWallet} disabled={busy || intent.status === "paid"}>
               {busy ? <Loader2 className="spin" size={18} /> : <Wallet size={18} />}
-              Connect wallet and pay USDC
+              {executableSplit ? "Connect wallet and split USDC" : "Connect wallet and pay USDC"}
             </button>
             {walletAddress && (
               <div className="wallet-chip">
@@ -1220,13 +1254,14 @@ function Checkout({ paymentIntentId, onBack }: { paymentIntentId: string; onBack
   );
 }
 
-function CheckoutStepper({ status }: { status: CheckoutStatus }) {
-  const activeIndex = checkoutSteps.findIndex((step) => step.key === status);
+function CheckoutStepper({ status, executableSplit }: { status: CheckoutStatus; executableSplit: boolean }) {
+  const steps = executableSplit ? executableSplitCheckoutSteps : checkoutSteps;
+  const activeIndex = steps.findIndex((step) => step.key === status);
   const failed = status === "failed";
 
   return (
     <ol className="checkout-steps">
-      {checkoutSteps.map((step, index) => {
+      {steps.map((step, index) => {
         const complete = activeIndex >= 0 && index < activeIndex;
         const active = step.key === status;
         return (
@@ -1245,6 +1280,7 @@ function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: D
   const [message, setMessage] = useState("");
   const intent = receipt ? state.paymentIntents.find((item) => item.id === receipt.paymentIntentId) : undefined;
   const splitPlan = receipt ? parseReceiptSplitPlan(receipt) : undefined;
+  const splitExecuted = receipt?.metadata.splitStatus === "executed";
 
   useEffect(() => {
     getReceipt(receiptId).then(setReceipt).catch((error) => setMessage(error.message));
@@ -1279,8 +1315,9 @@ function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: D
               <div className="receipt-split">
                 <div>
                   <strong>Split breakdown</strong>
-                  <span>{splitPlan.name} · collect to {splitPlan.settlementReceiver}</span>
+                  <span>{splitExecuted ? `Settlement contract: ${receipt.metadata.settlementContract || "ArcFlowSplitter"}` : `${splitPlan.name} · collect to ${splitPlan.settlementReceiver}`}</span>
                 </div>
+                {splitExecuted && <div className="success">Split status: Executed onchain</div>}
                 <div className="split-receiver-list">
                   {splitPlan.allocations.map((allocation) => (
                     <div key={`${allocation.address}-${allocation.shareBps}-${allocation.amount}`}>
@@ -1289,7 +1326,7 @@ function ReceiptView({ receiptId, state, onBack }: { receiptId: string; state: D
                     </div>
                   ))}
                 </div>
-                <small>Split breakdown records the intended allocation for this payment. Automatic disbursement is not enabled in this MVP.</small>
+                <small>{splitExecuted ? "Funds were disbursed on Arc according to this allocation before ArcFlow issued this receipt." : "Split breakdown records the intended allocation for this payment. Automatic disbursement is not enabled in this MVP."}</small>
               </div>
             )}
             <div className="receipt-actions">
@@ -1488,6 +1525,15 @@ function parseReceiptSplitPlan(receipt: Receipt): SplitPlan | undefined {
   if (!receipt.metadata.splitPlan) return undefined;
   try {
     return JSON.parse(receipt.metadata.splitPlan) as SplitPlan;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseIntentSplitPlan(intent: PaymentIntent): SplitPlan | undefined {
+  if (!intent.metadata.splitPlan) return undefined;
+  try {
+    return JSON.parse(intent.metadata.splitPlan) as SplitPlan;
   } catch {
     return undefined;
   }

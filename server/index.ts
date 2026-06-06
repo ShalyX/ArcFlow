@@ -2,9 +2,9 @@ import cors from "cors";
 import { randomUUID } from "node:crypto";
 import "dotenv/config";
 import express from "express";
-import { parseUsdc } from "../src/shared/arc";
+import { ARC_TESTNET, parseUsdc } from "../src/shared/arc";
 import type { ConfirmPaymentInput, CreateIntentInput, CreateIntentSplitRecipient, CreateSplitInput, Split, SplitAllocation, SplitPlan, SplitReceiver } from "../src/shared/types";
-import { validateIntentAddress, verifyArcUsdcTransfer } from "./arcVerifier";
+import { validateIntentAddress, verifyArcExecutableSplit, verifyArcUsdcTransfer } from "./arcVerifier";
 import {
   addLog,
   addWebhook,
@@ -156,7 +156,17 @@ app.post("/api/payment-intents/:id/confirm", async (request, response) => {
   }
 
   try {
-    const verified = await verifyArcUsdcTransfer(intent, body.txHash);
+    const splitPlan = parseSplitPlan(intent.metadata);
+    const executableSplit = intent.template === "revenue_split_executable";
+    if (executableSplit && !splitPlan) {
+      throw new Error("Executable revenue split intents require a split plan.");
+    }
+    const verified = executableSplit
+      ? await verifyArcExecutableSplit(intent, body.txHash, splitPlan!)
+      : await verifyArcUsdcTransfer(intent, body.txHash);
+    const receiptMetadata = executableSplit
+      ? { ...intent.metadata, splitStatus: "executed", settlementContract: verified.receiver }
+      : intent.metadata;
     const receipt = createReceipt({
       paymentIntentId: intent.id,
       projectId: intent.projectId,
@@ -164,11 +174,10 @@ app.post("/api/payment-intents/:id/confirm", async (request, response) => {
       receiver: intent.receiver,
       payer: verified.payer,
       txHash: verified.txHash,
-      metadata: intent.metadata
+      metadata: receiptMetadata
     });
     markIntentPaid(intent.id, verified.txHash, receipt.id);
-    const splitPlan = parseSplitPlan(intent.metadata);
-    recordSplitInstruction(intent.id, intent.projectId, receipt.id, splitPlan);
+    recordSplitInstruction(intent.id, intent.projectId, receipt.id, splitPlan, executableSplit);
     const paidIntent = getPaymentIntent(intent.id) || intent;
     await deliverWebhooks({
       type: "payment_intent.paid",
@@ -178,7 +187,8 @@ app.post("/api/payment-intents/:id/confirm", async (request, response) => {
         txHash: verified.txHash,
         receiptUrl: receipt.receiptUrl,
         ...(splitPlan ? { split: splitPlan } : {}),
-        ...intent.metadata
+        ...intent.metadata,
+        ...(executableSplit ? { splitStatus: "executed", settlementContract: verified.receiver } : {})
       }
     }, intent.projectId);
     response.json({ intent: paidIntent, receipt });
@@ -420,9 +430,21 @@ function parseWebhookInput(body: unknown, partial: boolean) {
 }
 
 function resolveIntentReceiver(body: CreateIntentInput) {
+  if (body.template === "revenue_split_executable") {
+    const splitterAddress = configuredSplitterAddress();
+    if (!validateIntentAddress(splitterAddress)) {
+      throw new Error("Configure ARCFLOW_SPLITTER_ADDRESS before creating executable revenue split intents.");
+    }
+    return splitterAddress;
+  }
+
   const receiver = body.receiver || body.settlementReceiver;
   if (!receiver) throw new Error("Receiver is required.");
   return receiver;
+}
+
+function configuredSplitterAddress() {
+  return (process.env.ARCFLOW_SPLITTER_ADDRESS || ARC_TESTNET.splitterAddress) as `0x${string}`;
 }
 
 function resolveIntentMetadata(
@@ -536,16 +558,16 @@ function parseSplitPlan(metadata: Record<string, string>) {
   }
 }
 
-function recordSplitInstruction(paymentIntentId: string, projectId: string, receiptId: string, splitPlan: SplitPlan | undefined) {
+function recordSplitInstruction(paymentIntentId: string, projectId: string, receiptId: string, splitPlan: SplitPlan | undefined, executed = false) {
   if (!splitPlan) return;
   const breakdown = splitPlan.allocations
     .map((allocation) => `${allocation.shareBps / 100}% to ${allocation.label || allocation.address}`)
     .join(", ");
   addLog({
     projectId,
-    level: "info",
-    type: "split.recorded",
-    message: `Recorded split plan for ${splitPlan.name}: ${breakdown}.`,
+    level: executed ? "success" : "info",
+    type: executed ? "split.executed" : "split.recorded",
+    message: `${executed ? "Executed onchain split" : "Recorded split plan"} for ${splitPlan.name}: ${breakdown}.`,
     paymentIntentId,
     receiptId
   });

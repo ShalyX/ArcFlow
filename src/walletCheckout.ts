@@ -1,7 +1,7 @@
-import { createPublicClient, createWalletClient, custom, erc20Abi, http, type Address, type EIP1193Provider, type Hash } from "viem";
+import { createPublicClient, createWalletClient, custom, erc20Abi, http, isAddress, keccak256, stringToBytes, zeroAddress, type Address, type EIP1193Provider, type Hash } from "viem";
 import { arcTestnet } from "viem/chains";
 import { ARC_TESTNET } from "./shared/arc";
-import type { PaymentIntent } from "./shared/types";
+import type { PaymentIntent, SplitPlan } from "./shared/types";
 
 declare global {
   interface Window {
@@ -16,6 +16,20 @@ const publicClient = createPublicClient({
   transport: http(ARC_TESTNET.rpcUrl)
 });
 
+const splitterAbi = [
+  {
+    type: "function",
+    name: "payAndSplit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "intentId", type: "bytes32" },
+      { name: "recipients", type: "address[]" },
+      { name: "amounts", type: "uint256[]" }
+    ],
+    outputs: []
+  }
+] as const;
+
 export type WalletPaymentResult = {
   account: Address;
   txHash: Hash;
@@ -25,6 +39,8 @@ export type WalletCheckoutStep =
   | "connect-wallet"
   | "switch-network"
   | "check-balance"
+  | "approve-split"
+  | "execute-split"
   | "submit-transfer"
   | "wait-confirmation";
 
@@ -65,6 +81,10 @@ export async function connectAndPayIntent(intent: PaymentIntent, options: Wallet
     throw new Error("Connected wallet does not have enough Arc Testnet USDC for this payment.");
   }
 
+  if (intent.template === "revenue_split_executable") {
+    return payExecutableSplit({ intent, account, amount, walletClient, options });
+  }
+
   options.onStep?.("submit-transfer");
   const txHash = await walletClient.writeContract({
     account,
@@ -81,6 +101,80 @@ export async function connectAndPayIntent(intent: PaymentIntent, options: Wallet
   });
 
   return { account, txHash };
+}
+
+async function payExecutableSplit({
+  intent,
+  account,
+  amount,
+  walletClient,
+  options
+}: {
+  intent: PaymentIntent;
+  account: Address;
+  amount: bigint;
+  walletClient: ReturnType<typeof createWalletClient>;
+  options: WalletPaymentOptions;
+}) {
+  const splitterAddress = configuredSplitterAddress();
+  const splitPlan = parseSplitPlan(intent);
+  const recipients = splitPlan.allocations.map((allocation) => allocation.address);
+  const amounts = splitPlan.allocations.map((allocation) => BigInt(allocation.amount));
+  const allocationTotal = amounts.reduce((sum, value) => sum + value, 0n);
+  if (allocationTotal !== amount) {
+    throw new Error("Split allocation amounts do not equal the checkout total.");
+  }
+
+  options.onStep?.("approve-split");
+  const approvalHash = await walletClient.writeContract({
+    account,
+    chain: arcTestnet,
+    address: ARC_TESTNET.usdcAddress,
+    abi: erc20Abi,
+    functionName: "approve",
+    args: [splitterAddress, amount]
+  });
+  await publicClient.waitForTransactionReceipt({
+    hash: approvalHash,
+    timeout: 120_000
+  });
+
+  options.onStep?.("execute-split");
+  const txHash = await walletClient.writeContract({
+    account,
+    chain: arcTestnet,
+    address: splitterAddress,
+    abi: splitterAbi,
+    functionName: "payAndSplit",
+    args: [keccak256(stringToBytes(intent.id)), recipients, amounts]
+  });
+
+  options.onStep?.("wait-confirmation");
+  await publicClient.waitForTransactionReceipt({
+    hash: txHash,
+    timeout: 120_000
+  });
+
+  return { account, txHash };
+}
+
+function configuredSplitterAddress() {
+  const address = (import.meta.env.VITE_ARCFLOW_SPLITTER_ADDRESS || ARC_TESTNET.splitterAddress) as Address;
+  if (!isAddress(address) || address === zeroAddress) {
+    throw new Error("Executable split checkout needs VITE_ARCFLOW_SPLITTER_ADDRESS set to the deployed ArcFlowSplitter contract.");
+  }
+  return address;
+}
+
+function parseSplitPlan(intent: PaymentIntent): SplitPlan {
+  if (!intent.metadata.splitPlan) {
+    throw new Error("Executable split checkout needs a split plan on the payment intent.");
+  }
+  try {
+    return JSON.parse(intent.metadata.splitPlan) as SplitPlan;
+  } catch {
+    throw new Error("Executable split checkout has an invalid split plan.");
+  }
 }
 
 async function ensureArcTestnet(provider: EIP1193Provider) {

@@ -19,9 +19,9 @@ approve USDC to ArcFlowSplitter
 ## Target Flow
 
 ```txt
-Create Revenue Split Plan intent
+Create Executable Revenue Split intent
 -> ArcFlow computes split plan
--> Checkout detects template = revenue_split
+-> Checkout detects template = revenue_split_executable
 -> Wallet approves ArcFlowSplitter for total USDC
 -> Wallet calls ArcFlowSplitter.payAndSplit(intentId, recipients, amounts)
 -> ArcFlowSplitter transfers:
@@ -144,4 +144,5 @@ After deployment, set:
 
 ```bash
 ARCFLOW_SPLITTER_ADDRESS=0x...
+VITE_ARCFLOW_SPLITTER_ADDRESS=0x...
 ```
