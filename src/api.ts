@@ -14,11 +14,24 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     }
   });
 
-  const data = await response.json();
+  const text = await response.text();
+  const data = parseResponseBody(text);
   if (!response.ok) {
-    throw new Error(data.error || "ArcFlow request failed.");
+    throw new Error(typeof data.error === "string" && data.error ? data.error : "ArcFlow request failed.");
   }
   return data as T;
+}
+
+function parseResponseBody(text: string): Record<string, unknown> {
+  if (!text.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { error: text };
+  }
 }
 
 export function getDashboardState() {

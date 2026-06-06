@@ -262,8 +262,16 @@ app.post("/api/webhooks", requireApiKey, (request, response) => {
 
 app.post("/api/splits", requireApiKey, (request, response) => {
   try {
+    const body = request.body as CreateSplitInput;
+    if (!body.name?.trim()) throw new Error("Split name is required.");
+    if (!validateIntentAddress(body.settlementReceiver)) throw new Error("Collection wallet must be a valid EVM address.");
+    if (!Array.isArray(body.receivers) || body.receivers.length === 0) throw new Error("Add at least one split receiver.");
+    for (const receiver of body.receivers) {
+      if (!validateIntentAddress(receiver.address)) throw new Error("Each split receiver must be a valid EVM address.");
+      if (!Number.isFinite(receiver.shareBps) || receiver.shareBps <= 0) throw new Error("Each split receiver share must be positive.");
+    }
     const split = createSplit({
-      ...(request.body as CreateSplitInput),
+      ...body,
       projectId: currentProjectId(request, response)
     });
     response.status(201).json(split);
