@@ -4,6 +4,8 @@
 
 ArcFlow is the payment event layer for USDC apps on Arc.
 
+Current release: `v0.1.3` - Hosted Checkout Project Settlement Fix.
+
 This first build focuses on the core product:
 
 - Payment intents
@@ -111,6 +113,8 @@ npm run build        # typecheck and production build
 
 See [DEMO.md](./DEMO.md) for the two-minute demo script.
 
+For the authenticated SDK pass, see [SDK Demo Guide](docs/SDK_DEMO.md).
+
 ## Screenshots
 
 Add screenshots or GIFs here before publishing:
@@ -124,6 +128,9 @@ Add screenshots or GIFs here before publishing:
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Security Notes](docs/SECURITY.md)
+- [SDK Demo Guide](docs/SDK_DEMO.md)
+- [Release Notes](RELEASE.md)
+- [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Developer SDK
@@ -260,6 +267,14 @@ Make sure `npm run dev:all` is running before `npm run demo:seed`. The seed scri
 
 Run `npm run demo:reset`, then seed a fresh intent.
 
+**SDK checkout paid, but receipt link does not load**
+
+Restart `npm run dev:all` so the latest receipt route is running, then reopen the receipt URL.
+
+**SDK project differs from the console project**
+
+That is expected in local demos. The browser may hold a different console API key than the SDK-created project key. Checkout and receipt links work by ID; project dashboard state requires the matching API key.
+
 ## Arc Defaults
 
 - Network: Arc Testnet
@@ -367,6 +382,8 @@ x-arcflow-api-key: ak_test_...
 The first key can be created from the local console without an existing key. After that, key creation, payment mutations, webhook management, and retry routes require a valid key.
 
 API keys are scoped to projects. The console stores project keys in browser local storage so the project selector can switch between isolated payment trails. Each project has its own payment intents, receipts, webhook endpoints, webhook delivery attempts, flow logs, and API keys.
+
+Hosted checkout can read one intent by ID, confirm or demo-settle that intent, and show its receipt by ID. It cannot list project state, manage webhooks, manage API keys, create projects, or switch project ownership without a valid project API key.
 
 Endpoint validation rejects empty URLs, invalid URLs, unsupported protocols, duplicate endpoint URLs, and endpoints with no selected events. Localhost endpoints are supported for the local demo; hosted deployments should require public HTTPS endpoints.
 
