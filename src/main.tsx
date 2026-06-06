@@ -121,6 +121,7 @@ const executableSplitCheckoutSteps: Array<{ key: CheckoutStatus; label: string }
 ];
 
 const configuredSplitterAddress = (import.meta.env.VITE_ARCFLOW_SPLITTER_ADDRESS || ARC_TESTNET.splitterAddress) as `0x${string}`;
+const splitterConfigured = /^0x[a-fA-F0-9]{40}$/.test(configuredSplitterAddress) && configuredSplitterAddress !== "0x0000000000000000000000000000000000000000";
 
 function absoluteUrl(path: string) {
   return new URL(path, window.location.origin).toString();
@@ -844,9 +845,11 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
     { label: "Partner", address: "0x0000000000000000000000000000000000000003", shareBps: 3000 }
   ]);
   const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [intentError, setIntentError] = useState("");
 
   function updateReceiver(index: number, field: "label" | "address" | "shareBps", value: string) {
+    setCreateError("");
     setReceivers((current) => current.map((receiver, itemIndex) => {
       if (itemIndex !== index) return receiver;
       return {
@@ -859,20 +862,24 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy("create");
-    setError("");
+    setCreateError("");
     try {
       await createSplit({ name, settlementReceiver: settlementReceiver as `0x${string}`, receivers: receivers as SplitReceiver[] });
       await onRefresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not create split.");
+      setCreateError(caught instanceof Error ? caught.message : "Could not create split.");
     } finally {
       setBusy("");
     }
   }
 
   async function createSplitIntent(splitId: string, settlementReceiver: string, executable = false) {
+    if (executable && !splitterConfigured) {
+      setIntentError("Executable split needs ARCFLOW_SPLITTER_ADDRESS and VITE_ARCFLOW_SPLITTER_ADDRESS set to a deployed ArcFlowSplitter contract.");
+      return;
+    }
     setBusy(`${executable ? "executable" : "intent"}-${splitId}`);
-    setError("");
+    setIntentError("");
     try {
       await createPaymentIntent({
         amount: "10.00",
@@ -889,7 +896,7 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
       });
       await onRefresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not create split intent.");
+      setIntentError(caught instanceof Error ? caught.message : "Could not create split intent.");
     } finally {
       setBusy("");
     }
@@ -907,11 +914,11 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
         </div>
         <label>
           Name
-          <input value={name} onChange={(event) => setName(event.target.value)} />
+          <input value={name} onChange={(event) => { setCreateError(""); setName(event.target.value); }} />
         </label>
         <label>
           Collection wallet
-          <input value={settlementReceiver} onChange={(event) => setSettlementReceiver(event.target.value)} placeholder="0x..." />
+          <input value={settlementReceiver} onChange={(event) => { setCreateError(""); setSettlementReceiver(event.target.value); }} placeholder="0x..." />
         </label>
         <div className="split-receivers">
           {receivers.map((receiver, index) => (
@@ -929,7 +936,7 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
           <Plus size={15} />
           Add receiver
         </button>
-        {error && <div className="error">{error}</div>}
+        {createError && <div className="error">{createError}</div>}
         <button className="primary-button" disabled={Boolean(busy)}>
           {busy === "create" ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
           Create split
@@ -938,6 +945,12 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
       </form>
 
       <div className="api-key-list">
+        {!splitterConfigured && (
+          <div className="notice">
+            Executable split intents are disabled until `ARCFLOW_SPLITTER_ADDRESS` and `VITE_ARCFLOW_SPLITTER_ADDRESS` point to a deployed ArcFlowSplitter contract.
+          </div>
+        )}
+        {intentError && <div className="error">{intentError}</div>}
         {splits.map((split) => (
           <article className="webhook-card" key={split.id}>
             <div className="line-card">
@@ -961,7 +974,7 @@ function SplitsPanel({ splits, onRefresh }: { splits: DashboardState["splits"]; 
                 {busy === `intent-${split.id}` ? <Loader2 className="spin" size={15} /> : <Send size={15} />}
                 Create plan intent
               </button>
-              <button className="tiny-button" type="button" onClick={() => createSplitIntent(split.id, split.settlementReceiver, true)} disabled={Boolean(busy)}>
+              <button className="tiny-button" type="button" onClick={() => createSplitIntent(split.id, split.settlementReceiver, true)} disabled={Boolean(busy) || !splitterConfigured} title={splitterConfigured ? "Create executable split intent" : "Configure ArcFlowSplitter first"}>
                 {busy === `executable-${split.id}` ? <Loader2 className="spin" size={15} /> : <Wallet size={15} />}
                 Create executable intent
               </button>
