@@ -105,6 +105,9 @@ It verifies signed ArcFlow events and unlocks `cus_demo` when `payment_intent.pa
 `packages/sdk`:
 
 - ArcFlow API client
+- `x-arcflow-api-key` authenticated requests
+- Project and API key helpers
+- Webhook endpoint and delivery helpers
 - Webhook signer/verifier
 
 `packages/react`:

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { encodeAbiParameters, encodeEventTopics, erc20Abi, type Hex } from "viem";
 import { findMatchingUsdcTransfer, type TransferLogCandidate } from "../server/arcVerifier";
 import { ARC_TESTNET } from "../src/shared/arc";
+import { ArcFlow } from "../packages/sdk/src/index";
 import { signArcFlowWebhook, verifyArcFlowWebhook } from "../packages/sdk/src/webhooks";
 
 const receiver = "0x0000000000000000000000000000000000000001";
@@ -265,6 +266,36 @@ describe("payment intent API guards", () => {
     const defaultState = await get(`${apiBase}/state`, apiKey);
     assert.equal(defaultState.currentProjectId, "proj_default");
     assert.ok(!defaultState.paymentIntents.some((intent: { id: string }) => intent.id === projectIntent.id));
+  });
+
+  it("supports authenticated SDK helpers", async () => {
+    const arcflow = new ArcFlow({ baseUrl: apiBase, apiKey });
+    const created = await arcflow.projects.create("SDK Merchant");
+    assert.equal(created.project.name, "SDK Merchant");
+    assert.equal(created.apiKey.projectId, created.project.id);
+
+    const projectClient = new ArcFlow({ baseUrl: apiBase, apiKey: created.apiKey.key });
+    const intent = await projectClient.paymentIntents.create({
+      amount: "3.00",
+      receiver,
+      description: "SDK checkout",
+      template: "payment-link"
+    });
+    assert.equal(intent.projectId, created.project.id);
+
+    const webhook = await projectClient.webhooks.create({
+      url: "http://127.0.0.1:3/webhooks/arcflow",
+      events: ["payment_intent.paid"],
+      enabled: true
+    });
+    assert.equal(webhook.projectId, created.project.id);
+
+    const state = await projectClient.state.get();
+    assert.equal(state.currentProjectId, created.project.id);
+    assert.ok(state.paymentIntents.some((item) => item.id === intent.id));
+    assert.ok(state.webhooks.some((item) => item.id === webhook.id));
+
+    await projectClient.webhooks.delete(webhook.id);
   });
 });
 

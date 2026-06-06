@@ -135,7 +135,7 @@ import { ArcFlow } from "@arcflow/sdk";
 
 const arcflow = new ArcFlow({
   baseUrl: "http://127.0.0.1:8787/api",
-  apiKey: "test_key"
+  apiKey: process.env.ARCFLOW_API_KEY
 });
 
 const intent = await arcflow.paymentIntents.create({
@@ -148,6 +148,25 @@ const intent = await arcflow.paymentIntents.create({
     productId: "api_basic"
   }
 });
+```
+
+Project and API key helpers:
+
+```ts
+const bootstrap = new ArcFlow({
+  baseUrl: "http://127.0.0.1:8787/api",
+  apiKey: process.env.ARCFLOW_API_KEY
+});
+
+const { project, apiKey } = await bootstrap.projects.create("Acme Checkout");
+
+const acme = new ArcFlow({
+  baseUrl: "http://127.0.0.1:8787/api",
+  apiKey: apiKey.key
+});
+
+const state = await acme.state.get();
+console.log(project.id, state.currentProjectId);
 ```
 
 Webhook verification:
@@ -169,7 +188,7 @@ import { ArcFlowProvider, PaymentButton } from "@arcflow/react";
 
 export function Checkout({ intentId }: { intentId: string }) {
   return (
-    <ArcFlowProvider baseUrl="http://127.0.0.1:8787/api">
+    <ArcFlowProvider baseUrl="http://127.0.0.1:8787/api" apiKey={process.env.ARCFLOW_API_KEY}>
       <PaymentButton intentId={intentId}>Pay with USDC on Arc</PaymentButton>
     </ArcFlowProvider>
   );
